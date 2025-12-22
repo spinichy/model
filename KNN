@@ -1,0 +1,13 @@
+data_raw <- readLines(con = "wdbc.txt")
+
+library(tidyverse)
+data_1 <- str_split(string = data_raw, pattern = ",") %>% 
+  reduce(., rbind) %>% 
+  as.data.frame()
+str(data_1)
+
+colnames(data_1[,c(1,2)]) <- c("ID", "Diagnosis")
+data_2 <- apply(X = data_1[,-c(1,2)], MARGIN = 2, FUN = as.numeric)         
+
+data <- cbind(data_1[,c(1,2)], data_2)
+str(data)
