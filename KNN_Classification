@@ -1,15 +1,74 @@
-#Loading data
+## Step.1 Data collection
+
+#Loading raw data
 data_raw <- readLines(con = "wdbc.txt")
 
-#data processing
+
+## Step.2 Data cpreparation
+
+#split data
 library(tidyverse)
 data_1 <- str_split(string = data_raw, pattern = ",") %>% 
   reduce(., rbind) %>% 
   as.data.frame()
 str(data_1)
 
-colnames(data_1[,c(1,2)]) <- c("ID", "Diagnosis")
-data_2 <- apply(X = data_1[,-c(1,2)], MARGIN = 2, FUN = as.numeric)         
+# remove id column 
+data_1 <- data_1[,-1] 
 
-data <- cbind(data_1[,c(1,2)], data_2)
-str(data)
+#as factor
+data_2 <- factor(x = data_1$V2,
+                 levels = c("B","M"), 
+                 labels = c("Benign", "Malignant")) 
+
+#as numeric
+data_3 <- apply(X = data_1[,-1], MARGIN = 2, FUN = as.numeric) %>% 
+  as.data.frame() 
+
+#merge data
+data_4 <- cbind(data_2, data_3) 
+str(data_4)
+
+#min-max normalize
+fn_normalize <- function(x) {
+  value <- (x - min(x)) / ( max(x) - min(x) )
+  return(value)
+} 
+
+#normalize
+data_5 <- apply(X = data_4[,-1], MARGIN = 2, FUN = fn_normalize) %>% 
+  as.data.frame()
+
+#merge data
+data_6 <- cbind(data_4[,1], data_5)
+colnames(data_6)[1] <- c("diagnosis")
+str(data_6)
+
+
+#extract sample index
+set.seed(1234)
+train_sample_index <- sample(x = 1:nrow(data_6), size = nrow(data_6)*0.7, replace = FALSE)
+
+#make train, test data
+
+data_train <- data_6[train_sample_index,]
+data_test <- data_6[-train_sample_index,]
+
+head(data_train)
+
+
+## Step3. Train model
+library(class) #k-Nearest Neighbour Classification
+n <- nrow(data_train);n
+k <- round(sqrt(n))+1;k #remove the tie
+
+pred_test <- knn(train = data_train[,-1], 
+                 test = data_test[,-1], 
+                 cl = data_train$diagnosis, 
+                 k = 21)
+
+
+## Step4. Train model
+library(gmodels)
+real_test <- data_test[,1]
+CrossTable(x = real_test, y = pred_test, prop.chisq = FALSE)
