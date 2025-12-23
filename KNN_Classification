@@ -1,5 +1,7 @@
+#Loading data
 data_raw <- readLines(con = "wdbc.txt")
 
+#data processing
 library(tidyverse)
 data_1 <- str_split(string = data_raw, pattern = ",") %>% 
   reduce(., rbind) %>% 
