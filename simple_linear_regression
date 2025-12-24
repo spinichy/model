@@ -1,4 +1,71 @@
-##Data Collection
+##Step1. #Data Collection
 
 library(regbook)
-str(regbook::hweight)
+regbook::hweight
+
+
+##Step2. Data processing and exploration
+
+#1processing 
+str(hweight)
+sum(is.na(hweight)) #No NA value
+
+library(mice)
+md.pattern(x = hweight) #No NA value
+
+
+#2exploration
+
+#summary
+summary(hweight)
+
+#boxplot
+library(ggplot2)
+ggplot(data = hweight, 
+       mapping = aes(x = height, y= weight, color = gender)) + 
+  geom_boxplot() + 
+  theme_bw()
+
+#scatter plot
+plot(weight ~ height, data = hweight)
+
+#correlation
+with(data = hweight, expr = cor(height, weight)) #0.7335482
+
+
+##Step3. Train Model
+
+#simple linear regression - gender: Male
+library(tidyverse)
+hweight_M <- hweight %>% 
+  filter(gender == "M")
+lm_hweight_M <- lm(weight ~ height, data = hweight_M)
+summary(lm_hweight_M)
+
+#simple linear regression - gender: Female
+hweight_F <- hweight %>% 
+  filter(gender == "F")
+lm_hweight_F <- lm(weight ~ height, data = hweight_F)
+summary(lm_hweight_F)
+
+#simple linear regression - gender: Male + Female
+lm_hweight <- lm(weight ~ height, data = hweight)
+summary(lm_hweight)
+
+
+##Step4. Evaluation Model
+
+#residual analysis
+par(mfrow = c(2,2))
+plot(lm_hweight)
+
+#Normality test
+shapiro.test(lm_hweight$residuals)
+
+#independence test
+par(mfrow = c(1,1))
+n <- length(lm_hweight$residuals)
+plot(x = 1:n, y = lm_hweight$residuals, 
+     xlab = "Observation Order", ylab = "residuals")
+
+#fitGoodness of Fit
