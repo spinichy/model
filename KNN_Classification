@@ -72,3 +72,76 @@ pred_test <- knn(train = data_train[,-1],
 library(gmodels)
 real_test <- data_test[,1]
 CrossTable(x = real_test, y = pred_test, prop.chisq = FALSE)
+
+
+## Step5. Improve model
+
+
+#z-score standardization
+colnames(data_4)[1] <- c("diagnosis")
+
+train_diagnosis <- data_train$diagnosis
+data_train <- data_train[,-1]
+data_test <- data_test[,-1]
+
+fn_standardized <- function(x) {
+  mean.x <- mean(x)
+  var.x <- var(x)
+  sd.x <- sqrt(var.x)
+  value <- (x - mean.x)/sd.x
+  return(value)
+} 
+
+#same code: scale(data_train[,-1]) 
+train_standardized <- apply(X = data_train , MARGIN = 2, FUN = fn_standardized) 
+test_standardized <- apply(X = data_test , MARGIN = 2, FUN = fn_standardized) 
+
+pred_test_standardized <- knn(train = train_standardized, 
+                              test = test_standardized, 
+                              cl = train_diagnosis, 
+                              k = 21)
+
+CrossTable(x = real_test, y = pred_test_standardized , prop.chisq = FALSE)
+
+
+#a variety of k-numbers
+k_values <- seq(1,21,by = 2)
+
+final <- rbind()
+for(i in k_values) {
+  pred_test <- knn(train = data_train, 
+                   test = data_test, 
+                   cl = train_diagnosis, 
+                   k = i)
+  result <- CrossTable(x = real_test, y = pred_test , prop.chisq = FALSE)
+  
+  accuracy <- sum(diag(result$t))/sum(result$t)
+  false_negative <- result$t[2,1]
+  
+  value <- c(i,accuracy, false_negative)
+  final <- rbind(final,value)
+}
+
+colnames(final) <- c("k", "accuracy", "false_negative")
+
+library(ggplot2)
+ggplot(data = final, mapping = aes(x = k)) + 
+  geom_col(aes(y = accuracy*10), fill = "skyblue") + 
+  scale_y_continuous(limits = c(0,10),
+                     breaks = seq(0,10,by = 1),
+                     sec.axis = sec_axis(transform = ~./10,
+                                         breaks = seq(0,1,by = 0.2))) + 
+  geom_text(aes(y = accuracy*10,
+                label = round(accuracy,2)), 
+            vjust = -1, 
+            color = "black") +
+  geom_point(aes(y = false_negative), color = "gray") + 
+  geom_text(aes(y = false_negative,
+                label = round(false_negative,2)), 
+            vjust = -1, 
+            color = "red") + 
+  labs(x = "K", y = "") + 
+  theme(axis.text.y = element_blank(),
+        panel.background = element_rect(fill = "white")) + 
+  scale_x_continuous(limits = c(-1,25), breaks = seq(-1,25,by=2)) + 
+  coord_cartesian(xlim = c(1,21))
