@@ -103,3 +103,22 @@ table(labels_test) %>%
 
 
 #wordclous
+library(wordcloud)
+windows()
+wordcloud(words = text_corpus_clean_6, 
+          min.freq = 50, 
+          random.order = FALSE, scale = c(5,0.5))
+
+wordcloud(words = text_corpus_clean_6, 
+          min.freq = 50, 
+          random.order = FALSE, scale = c(5,0.5))
+
+index_ham <- which(data_1$type == "ham")
+index_spam <- which(data_1$type == "spam")
+
+wordcloud(words = text_corpus_clean_6[index_ham], 
+          min.freq = 50, 
+          random.order = FALSE, scale = c(5,0.5))
+wordcloud(words = text_corpus_clean_6[index_spam], 
+          min.freq = 10, 
+          random.order = FALSE, scale = c(5,0.5))
