@@ -1,1 +1,105 @@
+## Step.1 Data collection
 
+
+data_raw <- readLines(con = "SMSSpamCollection.txt")
+str(data_raw)
+head(data_raw);tail(data_raw)
+
+
+## Step.2 Data processing and exploration
+
+
+#split text data
+library(tidyverse)
+n <- length(data_raw)
+type <- c()
+text <- c()
+data_raw
+
+for(i in 1:n) {
+  result <- unlist(str_split(string = data_raw[i], pattern = "\\\t"))
+  type[i] <- result[1]
+  text[i] <- result[2]
+}
+data_1 <- data.frame(
+  type = type,
+  text = text
+)
+
+data_1$type <- factor(data_1$type)
+
+str(data_1)
+table(data_1$type)
+
+#text corpus
+install.packages('tm') #updated
+library(tm)
+
+text_corpus <- VectorSource(x = data_1$text) %>% 
+  VCorpus()
+
+inspect(head(text_corpus))
+text_corpus[[1]] %>% 
+  as.character()
+
+#change lower case
+text_corpus_clean_1 <- tm_map(x = text_corpus, 
+                            FUN = content_transformer(FUN = tolower))
+
+#remove numbers
+text_corpus_clean_2 <- tm_map(x = text_corpus_clean_1,
+                              FUN = removeNumbers)
+
+#remove specific words
+stopwords(kind = "en")
+text_corpus_clean_3 <- tm_map(x = text_corpus_clean_2,
+                              FUN = removeWords, stopwords())
+
+#remove punctuaion
+text_corpus_clean_4 <- tm_map(x = text_corpus_clean_3,
+                              FUN = removePunctuation)
+
+#stemming
+library(SnowballC)
+text_corpus_clean_5 <- tm_map(x = text_corpus_clean_4,
+                              FUN = stemDocument)
+
+#remove whitespace
+text_corpus_clean_6 <- tm_map(x = text_corpus_clean_5,
+                              FUN = stemDocument)
+#processing check
+text_corpus_clean_1[[1]] %>% 
+  as.character()
+text_corpus_clean_2[[1]] %>% 
+  as.character()
+text_corpus_clean_3[[1]] %>% 
+  as.character()
+text_corpus_clean_4[[1]] %>% 
+  as.character()
+text_corpus_clean_5[[1]] %>% 
+  as.character()
+text_corpus_clean_6[[1]] %>% 
+  as.character()
+
+
+#tokenization
+text_DTM <- DocumentTermMatrix(text_corpus_clean_6)
+inspect(text_DTM)
+
+
+#Classify into training and testing data
+train_index <- sample(x = 1:n, size = round(n*0.7), replace = FALSE)
+
+DTM_train <- text_DTM[train_index,]
+DTM_test <- text_DTM[-train_index,]
+
+labels_train <- data_1$type[train_index]
+labels_test <- data_1$type[-train_index]
+
+table(labels_train) %>% 
+  prop.table()
+table(labels_test) %>% 
+  prop.table()
+
+
+#wordclous
