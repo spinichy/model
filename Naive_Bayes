@@ -1,6 +1,5 @@
 ## Step.1 Data collection
 
-
 data_raw <- readLines(con = "SMSSpamCollection.txt")
 str(data_raw)
 head(data_raw);tail(data_raw)
@@ -86,7 +85,6 @@ text_corpus_clean_6[[1]] %>%
 text_DTM <- DocumentTermMatrix(text_corpus_clean_6)
 inspect(text_DTM)
 
-
 #Classify into training and testing data
 train_index <- sample(x = 1:n, size = round(n*0.7), replace = FALSE)
 
@@ -101,14 +99,9 @@ table(labels_train) %>%
 table(labels_test) %>% 
   prop.table()
 
-
-#wordclous
+#wordclous - text total
 library(wordcloud)
 windows()
-wordcloud(words = text_corpus_clean_6, 
-          min.freq = 50, 
-          random.order = FALSE, scale = c(5,0.5))
-
 wordcloud(words = text_corpus_clean_6, 
           min.freq = 50, 
           random.order = FALSE, scale = c(5,0.5))
@@ -116,9 +109,49 @@ wordcloud(words = text_corpus_clean_6,
 index_ham <- which(data_1$type == "ham")
 index_spam <- which(data_1$type == "spam")
 
+#wordclous - text ham and text spam
+windows()
 wordcloud(words = text_corpus_clean_6[index_ham], 
           min.freq = 50, 
           random.order = FALSE, scale = c(5,0.5))
+windows()
 wordcloud(words = text_corpus_clean_6[index_spam], 
           min.freq = 10, 
           random.order = FALSE, scale = c(5,0.5))
+
+#Frequnetly words
+index_frequnet_words <- findFreqTerms(x = DTM_train, lowfreq = 5) 
+DTM_train_freq <- DTM_train[,index_frequnet_words]
+DTM_test_freq <- DTM_test[,index_frequnet_words]
+
+
+#categorize function
+fn_convert_counts <- function(x) {
+  value <- ifelse(x > 0, "Yes", "No")
+  return(value)
+}
+
+data_train_freq <- apply(X = DTM_train_freq, MARGIN = 2, FUN = fn_convert_counts) 
+data_test_freq <- apply(X = DTM_test_freq, MARGIN = 2, FUN = fn_convert_counts) 
+View(data_train_freq)
+
+
+
+## Step.3 Train model 
+library(naivebayes)
+sms_classifier <- naive_bayes(x = data_train_freq, y = labels_train)
+
+
+
+## Step.4 Evaluate model
+pred_labels_test <- predict(object = sms_classifier, data_test_freq)
+
+library(gmodels)
+CrossTable(x = labels_test, y = pred_labels_test)
+
+
+
+## Step.5 Improve model
+sms_classifier_2 <- naive_bayes(x = data_train_freq, y = labels_train, laplace = 1)
+pred_labels_test_2 <- predict(object = sms_classifier_2, data_test_freq)
+CrossTable(x = labels_test, y = pred_labels_test_2)
