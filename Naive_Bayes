@@ -247,10 +247,10 @@ votes_NB <- naiveBayes(case_class ~ ., data = votes_replacement_train);votes_NB
 
 ##Step4. Evaluate Model
 real_votes <-  votes_replacement_test[,1]
-pred_votes_NB <- predict(object = votes_NB, newdata =real_votes)
-mean(pred_votes_NB ==  real_votes)
-
+pred_votes_NB <- predict(object = votes_NB, newdata = votes_replacement_test[,-1])
 real_votes <-  votes_replacement_test[,1]
+
+mean(pred_votes_NB ==  real_votes)
 library(gmodels)
 CrossTable(x = real_votes, 
            y = pred_votes_NB)
@@ -269,7 +269,7 @@ predict(object = votes_NB,
 votes_NB_laplace <- naiveBayes(case_class ~ ., data = votes_replacement_train, laplace = 1)
 
 pred_votes_NB <- predict(object = votes_NB_laplace, newdata = votes_replacement_test[,-1])
-mean(pred_votes_NB ==  real_votes)
 
+mean(pred_votes_NB ==  real_votes)
 CrossTable(x = real_votes, 
-           y = pred_votes_NB)
+           y = pred_votes_NB) 
