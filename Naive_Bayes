@@ -155,3 +155,121 @@ CrossTable(x = labels_test, y = pred_labels_test)
 sms_classifier_2 <- naive_bayes(x = data_train_freq, y = labels_train, laplace = 1)
 pred_labels_test_2 <- predict(object = sms_classifier_2, data_test_freq)
 CrossTable(x = labels_test, y = pred_labels_test_2)
+
+
+
+
+
+
+
+
+
+
+
+##Step1. Data collection
+
+
+library(mlbench)
+?HouseVotes84
+
+data("HouseVotes84")
+votes <- HouseVotes84
+str(votes)
+
+
+##Step2. Data preparation and exploration
+
+
+#NA exploration
+library(mice)
+md.pattern(x = votes)
+
+library(tidyverse)
+is.na(votes) %>% 
+  as.data.frame() %>% 
+  lapply(., sum) %>% 
+  as.data.frame() #lots of NA value
+
+
+
+#replace NA with random value
+votes_replacement <- c()
+for(i in 1:nrow(votes)) {
+  class <- levels(votes$Class) #total class
+  
+  
+  case_class <- votes[i,][,1] %>% 
+    as.character()
+  case_variables <- votes[i,][,-1] 
+  
+  
+  df <- unlist(case_variables) %>% 
+    table() %>% 
+    prop.table() %>% 
+    as.data.frame()
+  prop_yes <- df[df$. == "y",][,2] #specific class probability
+  
+  if(is.na(prop_yes)) next
+  
+  other <- setdiff(class, case_class);other
+  replacement_value <- sample(x = c(case_class, other), 
+                              size = 1, 
+                              prob = c(prop_yes, 1- prop_yes)) #extract random value
+  replacement_result <- ifelse(test = case_class == replacement_value, "y", "n") 
+  
+  NA_index <- which(is.na(case_variables)) #find NA value
+  case_variables[NA_index] <- replacement_result #replace NA with replacement_result
+  
+  case_variables_replacement <- cbind(case_class, case_variables)  %>% 
+    as.data.frame()
+  
+  votes_replacement <- bind_rows(votes_replacement, case_variables_replacement)
+}
+
+str(votes_replacement) #249 row is All NA value
+votes[249,]
+
+
+#Split the data into training and testing sets
+
+index_train <- sample(x = 1:nrow(votes_replacement), 
+                      size = nrow(votes_replacement)*0.7, 
+                      replace = FALSE)
+
+votes_replacement_train <- votes_replacement[index_train,]
+votes_replacement_test <- votes_replacement[-index_train,]
+
+
+##Step3. Train Model
+library(e1071)
+votes_NB <- naiveBayes(case_class ~ ., data = votes_replacement_train);votes_NB
+
+
+##Step4. Evaluate Model
+real_votes <-  votes_replacement_test[,1]
+pred_votes_NB <- predict(object = votes_NB, newdata =real_votes)
+mean(pred_votes_NB ==  real_votes)
+
+real_votes <-  votes_replacement_test[,1]
+library(gmodels)
+CrossTable(x = real_votes, 
+           y = pred_votes_NB)
+
+predict(object = votes_NB, 
+        newdata = votes_replacement_test[,-1], 
+        type = "class") #class
+predict(object = votes_NB, 
+        newdata = votes_replacement_test[,-1], 
+        type = "raw") #probability
+
+
+##Step5. Improve Model
+
+
+votes_NB_laplace <- naiveBayes(case_class ~ ., data = votes_replacement_train, laplace = 1)
+
+pred_votes_NB <- predict(object = votes_NB_laplace, newdata = votes_replacement_test[,-1])
+mean(pred_votes_NB ==  real_votes)
+
+CrossTable(x = real_votes, 
+           y = pred_votes_NB)
