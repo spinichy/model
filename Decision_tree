@@ -1,1 +1,95 @@
+###part1
 
+
+
+##Step1. Data collection
+
+library(mlbench)
+?BreastCancer
+
+data("BreastCancer")
+breastcancer <- BreastCancer
+str(breastcancer)
+
+
+##Step2. Data preparation and exploration
+
+
+#NA exploration
+library(mice)
+md.pattern(breastcancer) #16 NA values in Bare.nuclei variable
+
+#as.numeric
+library(tidyr)
+Class <- breastcancer$Class
+Variables <- breastcancer[,-c(1,11)] %>% 
+  apply(MARGIN = 2, FUN = as.numeric) %>% 
+  as.data.frame()
+
+#replace NA with mean value
+bc <- cbind(Class,Variables);bc
+bc$Bare.nuclei[is.na(bc$Bare.nuclei)] <- round(mean(x = bc$Bare.nuclei, na.rm = TRUE))
+
+#data check
+str(bc)
+md.pattern(bc)
+
+#split into train and test data
+train_index <- sample(x = 1:nrow(bc), size = nrow(bc)*0.7, replace = FALSE)
+bc_train <- bc[train_index,]
+bc_test <- bc[-train_index,]
+
+
+##Step3.Train Model
+library(rpart)
+bc_decisiontree_class <- rpart(formula = Class ~ .,
+                               data = bc_train, 
+                               method = "class", #if "anova" is regression
+                               parms = list(split = "information")) #entropy, or split = gini
+bc_decisiontree_class 
+
+
+library(rpart.plot)
+prp(x = bc_decisiontree_class, 
+    type = 2, 
+    extra = 104, 
+    fallen.leaves = TRUE, roundint = FALSE)
+
+
+##Step4.Evaluate Model
+pred_test <- predict(object = bc_decisiontree_class, 
+                     newdata = bc_test, 
+                     type = "class") #if "prob" is probability
+
+library(gmodels)
+CrossTable(x = bc_test$Class, y = pred_test)
+
+
+##Step5.Improve Model
+
+bc_decisiontree_class$cptable #CP: Complexity Parameter - penalty to large tree
+
+plotcp(x = bc_decisiontree_class) #xerror ~ cp
+
+#prune
+cp <- 0.021
+bc_decisiontree_class_prune <- rpart(formula = Class ~ .,
+                                     data = bc_train, 
+                                     method = "class", 
+                                     parms = list(split = "information"), 
+                                     cp = cp) #same code: prune(bc_decisiontree_class)
+bc_decisiontree_class_prune 
+
+bc_decisiontree_class_prune$cptable
+
+prp(x = bc_decisiontree_class_prune, 
+    type = 2, 
+    extra = 104, 
+    fallen.leaves = TRUE, roundint = FALSE)
+
+
+pred_test_prune <- predict(object = bc_decisiontree_class, 
+                           newdata = bc_test, 
+                           type = "class") 
+library(gmodels)
+CrossTable(x = bc_test$Class, y = pred_test_prune)
