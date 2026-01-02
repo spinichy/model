@@ -93,3 +93,179 @@ pred_test_prune <- predict(object = bc_decisiontree_class,
                            type = "class") 
 library(gmodels)
 CrossTable(x = bc_test$Class, y = pred_test_prune)
+
+
+
+###part2
+
+
+
+##Step1. Data collection
+
+
+data_raw <- read.table(file = "german.data.txt")
+str(data_raw)
+
+
+##Step2. Data preparation and exploration
+library(tidyverse)
+german_credit <- data_raw
+
+table(german_credit$V1)
+checking_account <- case_when(german_credit$V1 == "A11" ~ "<    0 DM",
+                              german_credit$V1 == "A12" ~ "<  200 DM",
+                              german_credit$V1 == "A13" ~ ">= 200 DM",
+                              german_credit$V1 == "A14" ~ "no checking account") %>% 
+  factor(levels = c("<    0 DM", "<  200 DM",  ">= 200 DM", "no checking account"), 
+         labels = c("<    0 DM", "<  200 DM",  ">= 200 DM", "no checking account"))
+checking_account
+
+Duration_in_month <- german_credit$V2
+
+table(german_credit$V3)  
+Credit_history <- case_when(german_credit$V3 == "A30" ~ "better",
+                            german_credit$V3 == "A31" ~ "good",
+                            german_credit$V3 == "A32" ~ "normal",
+                            german_credit$V3 == "A33" ~ "bad",
+                            german_credit$V3 == "A34" ~ "worse") %>% 
+  factor(levels = c("better", "good", "normal", "bad", "worse"), 
+         labels = c("better", "good", "normal", "bad", "worse"))
+
+  
+table(german_credit$V4)  
+Purpose <-  case_when(german_credit$V4 == "A40" ~ "car (new)",
+                      german_credit$V4 == "A41" ~ "car (used)",
+                      german_credit$V4 == "A42" ~ "furniture/equipment",
+                      german_credit$V4 == "A43" ~ "radio/television",
+                      german_credit$V4 == "A44" ~ "domestic appliances",
+                      german_credit$V4 == "A45" ~ "repairs",
+                      german_credit$V4 == "A46" ~ "education",
+                      german_credit$V4 == "A47" ~ "vacation",
+                      german_credit$V4 == "A48" ~ "retraining",
+                      german_credit$V4 == "A49" ~ "business",
+                      german_credit$V4 == "A410" ~ "others") %>% 
+  as.factor()
+
+Credit_amount <- german_credit$V5
+
+table(german_credit$V6)  
+Savings_account <- case_when(german_credit$V6 == "A61" ~ "< 100 DM",
+                             german_credit$V6 == "A62" ~ "100 <= <500 DM",
+                             german_credit$V6 == "A63" ~ "500 <= <1000 DM",
+                             german_credit$V6 == "A64" ~ "> 1000 DM",
+                             german_credit$V6 == "A65"  ~ "no savings account") %>% 
+  factor(levels = c("< 100 DM", "100 <= <500 DM", "500 <= <1000 DM", "> 1000 DM", "no savings account"), 
+         labels = c("< 100 DM", "100 <= <500 DM", "500 <= <1000 DM", "> 1000 DM", "no savings account"))
+
+table(german_credit$V7)  
+Present_employment_since <-  case_when(german_credit$V7 == "A71" ~ "unemployed",
+                                       german_credit$V7 == "A72" ~ "< 1 years",
+                                       german_credit$V7 == "A73" ~ "1<= <4 years",
+                                       german_credit$V7 == "A74" ~ "4<= <7 years",
+                                       german_credit$V7 == "A75" ~ "> 7 years") %>% 
+  factor(levels = c("unemployed",  "< 1 years", "1<= <4 years",  "4<= <7 years", "> 7 years"), 
+         labels = c("unemployed",  "< 1 years", "1<= <4 years",  "4<= <7 years", "> 7 years"))
+
+
+Installment_rate_DI <- german_credit$V8
+
+table(german_credit$V9) 
+Personal_sex_status <- case_when(german_credit$V9 == "A91" ~ "male_divorced/separated",
+                                 german_credit$V9 == "A92" ~ "female_divorced/separated/married",
+                                 german_credit$V9 == "A93" ~ "male_single",
+                                 german_credit$V9 == "A94" ~ "married/widowed") %>% 
+  as.factor()
+
+table(german_credit$V10) 
+Other_debtors <- case_when(german_credit$V10 == "A101" ~ "none",
+                           german_credit$V10 == "A102" ~ "co-applicant",
+                           german_credit$V10 == "A103" ~ "guarantor") %>% 
+  as.factor()
+
+
+Present_residence_since <- german_credit$V11
+
+
+table(german_credit$V12) 
+Property <- case_when(german_credit$V12 == "A121" ~ "real estate",
+                      german_credit$V12 == "A122" ~ "savings agreement",
+                      german_credit$V12 == "A123" ~ "car or other",
+                      german_credit$V12 == "A124" ~ "no property") %>% 
+  as.factor()
+
+Age_in_years <- german_credit$V13
+
+table(german_credit$V14) 
+Other_installment_plans <- case_when(german_credit$V14 == "A141" ~ "bank",
+                                     german_credit$V14 == "A142" ~ "stores",
+                                     german_credit$V14 == "A143" ~ "none") %>% 
+  as.factor()
+
+table(german_credit$V15) 
+Housing <- case_when(german_credit$V15 == "A151" ~ "rent",
+                     german_credit$V15 == "A152" ~ "own",
+                     german_credit$V15 == "A153" ~ "for free") %>% 
+  as.factor()
+
+existing_credits <- german_credit$V16
+
+table(german_credit$V17) 
+Job <- case_when(german_credit$V17 == "A171" ~ "unskilled_non-resident",
+                 german_credit$V17 == "A172" ~ "unskilled_resident",
+                 german_credit$V17 == "A173" ~ "skilled employee ",
+                 german_credit$V17 == "A174" ~ "highly qualified employee") %>% 
+  as.factor()
+
+people_liable <- german_credit$V18
+
+table(german_credit$V19) 
+Telephone <- case_when(german_credit$V19 == "A191" ~ "none",
+                      german_credit$V19 == "A192" ~ "yes") %>% 
+  as.factor()
+
+table(german_credit$V20) 
+foreign_worker <- case_when(german_credit$V20 == "A201" ~ "yes",
+                            german_credit$V20 == "A202" ~ "no") %>% 
+  as.factor()
+
+table(german_credit$V21)
+
+default <- case_when(german_credit$V21 == 1 ~ "no",
+                     german_credit$V21 == 2 ~ "yes") %>% 
+  as.factor()
+
+
+Credit <- 
+data.frame(checking_account = checking_account,
+           Duration_in_month = Duration_in_month,
+           Credit_history = Credit_history,
+           Purpose = Purpose,
+           Credit_amount = Credit_amount,
+           Savings_account = Savings_account,
+           Present_employment_since = Present_employment_since,
+           Installment_rate_DI = Installment_rate_DI,
+           Personal_sex_status = Personal_sex_status,
+           Other_debtors = Other_debtors,
+           Present_residence_since = Present_residence_since,
+           Property = Property,
+           Age_in_years = Age_in_years,
+           Other_installment_plans = Other_installment_plans,
+           Housing = Housing,
+           existing_credits = existing_credits,
+           Job = Job,
+           people_liable = people_liable,
+           Telephone = Telephone,
+           foreign_worker = foreign_worker,
+           default = default) 
+
+str(Credit)
+
+##Step3.Train Model
+
+
+
+##Step4.Evaluate Model
+
+
+
+##Step5.Improve Model
