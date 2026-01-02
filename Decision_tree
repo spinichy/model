@@ -260,12 +260,81 @@ data.frame(checking_account = checking_account,
 
 str(Credit)
 
+
+#split into train and test data
+set.seed(1234)
+train_index <- sample(x = 1:length(Credit$default),
+                      size =  length(Credit$default)*0.7, 
+                      replace = FALSE)
+
+Credit_train <- Credit[train_index,]
+Credit_test <- Credit[-train_index,]
+
+
+Credit_train$default %>% 
+  as.character() %>% 
+  table() %>% 
+  prop.table()
+
+
 ##Step3.Train Model
 
+
+library(C50)
+Credit_model <- C5.0(default ~ ., data = Credit_train)
+Credit_model
+
+summary(Credit_model)
 
 
 ##Step4.Evaluate Model
 
 
+pred_Credit <- predict(object = Credit_model, newdata = Credit_test)
+
+mean(Credit_test$default == pred_Credit) 
+library(gmodels)
+CrossTable(x = Credit_test$default, 
+           y = pred_Credit, 
+           dnn = c("actual default", "predicted default"))
+
 
 ##Step5.Improve Model
+
+
+
+Credit_model_boost10 <- C5.0(default ~ ., data = Credit_train, 
+                             trials = 10)
+Credit_model_boost10
+
+summary(Credit_model_boost10)
+
+pred_Credit_2 <- predict(object = Credit_model_boost10, 
+                         newdata = Credit_test)
+
+mean(Credit_test$default == pred_Credit_2) 
+CrossTable(x = Credit_test$default, 
+           y = pred_Credit_2, 
+           dnn = c("actual default", "predicted default_boosting"))
+
+
+#cost matrix
+matrix_dimensions <- list(c("no", "yes"), 
+                          c("no", "yes"))
+names(matrix_dimensions) <- c("predicted","actual")
+error_cost <- matrix(c(0,1,4,0), nrow = 2, ncol = 2, 
+                     dimnames = matrix_dimensions)
+error_cost
+
+#cost model
+Credit_model_cost <- C5.0(default ~ ., 
+                          data = Credit_train, 
+                          costs = error_cost)
+summary(Credit_model_cost)
+
+pred_Credit_3 <- predict(object = Credit_model_cost, 
+                         newdata = Credit_test)
+mean(Credit_test$default == pred_Credit_3) 
+CrossTable(x = Credit_test$default, 
+           y = pred_Credit_3, 
+           dnn = c("actual default", "predicted default_costing"))
