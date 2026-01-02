@@ -337,4 +337,4 @@ pred_Credit_3 <- predict(object = Credit_model_cost,
 mean(Credit_test$default == pred_Credit_3) 
 CrossTable(x = Credit_test$default, 
            y = pred_Credit_3, 
-           dnn = c("actual default", "predicted default_costing"))
+           dnn = c("actual default", "predicted default_cost"))
