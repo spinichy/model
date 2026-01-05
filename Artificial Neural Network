@@ -1,0 +1,106 @@
+##Step1. Data collection
+
+
+library(readxl)
+data_raw <- read_xls(path = "Concrete_Data.xls")
+str(data_raw)
+
+
+##Step2. Data preparation and exploration
+
+
+concrete <- data_raw
+
+library(tidyverse)
+
+colnames(concrete) <- c("cement", "slag", "ash", "water", "superplastic",
+                        "coarseagg", "fineagg", "age", "strength")
+attach(concrete)
+
+summary(concrete)
+
+#normalize
+fn_normalize <- function(x) {
+  value <- (x - min(x)) / (max(x) - min(x))
+  return(value)
+}
+
+concrete_norm <- apply(X = concrete, MARGIN = 2, FUN = fn_normalize) %>% 
+  as.data.frame()
+
+#split into train and test data
+index_train <- sample(x = 1:nrow(concrete_norm), 
+                      size = nrow(concrete_norm)*0.7, 
+                      replace = FALSE)
+train_concrete <- concrete_norm[index_train,]
+test_concrete <- concrete_norm[-index_train,]
+
+
+##Step3.Train Model
+
+
+library(neuralnet)
+set.seed(1234)
+concrete_model <- neuralnet(formula = strength ~ ., 
+                            data = train_concrete)
+windows()
+plot(concrete_model)
+
+
+
+##Step4.Evaluate Model
+
+
+model_result <- compute(x = concrete_model, 
+                        covariate = test_concrete[,-9])
+model_result
+pred_strength <- model_result$net.result
+
+cor(x = pred_strength, y = test_concrete$strength) #pred numeric
+
+
+##Step5.Improve Model
+
+
+set.seed(1234)
+concrete_model_2 <- neuralnet(formula = strength ~ ., 
+                            data = train_concrete, 
+                            hidden = 5)
+windows()
+plot(concrete_model_2)
+
+model_result_2 <- compute(x = concrete_model_2, 
+                          covariate = test_concrete[,-9])
+pred_strength_2 <- model_result_2$net.result
+cor(x = pred_strength_2, y = test_concrete$strength)
+
+#Use softplus function
+
+fn_softplus <- function(x) { log(1 + exp(x)) }
+
+set.seed(1234)
+concrete_model_3 <- neuralnet(formula = strength ~ ., 
+                              data = train_concrete, 
+                              hidden = c(5,5), act.fct = fn_softplus)
+plot(concrete_model_3)
+
+model_result_3 <- compute(x = concrete_model_3, 
+                          covariate = test_concrete[,-9])
+pred_strength_3 <- model_result_3$net.result
+cor(x = pred_strength_3, y = test_concrete$strength)
+
+fn_unnormalize_strength <- function(x) {
+  strength <- concrete$strength
+  x * ( max(strength) - min(strength) ) + min(strength)
+}
+
+pred_strength_2_unnormalize <- fn_unnormalize_strength(pred_strength_2)
+actual_strength_unnormalize <- fn_unnormalize_strength(test_concrete$strength)
+
+cor(pred_strength_2_unnormalize, actual_strength_unnormalize)
+data.frame(
+  pred = pred_strength_2_unnormalize, 
+  actual = actual_strength_unnormalize
+) %>% 
+  mutate(diff = pred-actual) %>% 
+  mutate(diff_ratio = diff/actual)
