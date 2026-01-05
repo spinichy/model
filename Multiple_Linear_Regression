@@ -1,1 +1,103 @@
+###Step1. #Data collection
 
+
+library(regbook)
+data("KBO1")
+?KBO1
+
+
+##Step2. Data processing and exploration
+
+
+KBO_2011 <- KBO1
+str(KBO_2011)
+
+#NA values
+library(mice)
+md.pattern(KBO_2011)
+
+#change colnames
+colnames(KBO_2011) <- c("Salary", "Hit", "HR", "RBI", "Runs", "BB", 
+                        "C_Hits","C_Years", "Team", "Player" )
+
+
+#scatterplot
+pairs(KBO_2011)
+
+#Scatterplot, Histogram, Correlation
+library(GGally)
+ggpairs(KBO_2011[,1:8])
+
+plot(KBO_2011[,c(1,9,10)])
+KBO_2011$Team
+
+plot(x = KBO_2011$Team, y = KBO_2011$Salary)
+
+summary(KBO_2011$Salary)
+
+
+##Step3. Train model
+
+
+KBO_lm <- lm(formula = Salary ~ ., data = KBO_2011[,-10])
+
+
+##Step4. Evaluate model
+
+
+summary(KBO_lm)
+
+KBO_lm_anova <- anova(KBO_lm);KBO_lm_anova 
+
+KBO_PRESS <- press(KBO_lm) #same code: sum(rpredict(KBO_lm)^2)
+KBO_SSE <- sum(resid(KBO_lm)^2)
+KBO_PRESS$PRESS - KBO_SSE
+1-KBO_PRESS$PRESS/sum(KBO_lm_anova$`Sum Sq`)
+
+
+confint(KBO_lm)
+
+
+pred_confi <- predict(KBO_lm, interval = "confidence") #confidence interval
+pred_predi <- predict(KBO_lm, interval = "prediction") #prediction interval
+
+plot(pred_confi[,1], pch = 19, ylab = "fitvalue")
+points(pred_confi[,2], pch = 1, col = "red")
+points(pred_confi[,3], pch = 1, col = "blue")
+legend("topright", 
+       pch = c(19,1,1),
+       col = c("black", "red", "blue"),
+       legend = c("fit", "fit_lower", "fit_upper"))
+
+
+#Residual analysis
+par(mfrow = c(2,2))
+plot(KBO_lm)
+
+plot(x = fitted(KBO_lm),fitted(KBO_lm)-mean(KBO1$Y))
+
+library(lattice)
+rfs(KBO_lm)
+
+
+##Step5. Improve model
+
+
+str(KBO_2011)
+data <-  KBO_2011[,c("Salary", "Hit", "C_Hits", "HR", "BB")];data
+KBO_lm_2 <- lm(formula = Salary ~ ., data = data)
+summary(KBO_lm_2)
+
+
+data_2 <-  KBO_2011[,c("Salary", "C_Hits", "HR", "BB")]
+KBO_lm_3 <- lm(formula = Salary ~ ., data = data_2)
+summary(KBO_lm_3)
+
+data_3 <-  KBO_2011[,c("Salary", "C_Hits", "HR")]
+KBO_lm_4 <- lm(formula = Salary ~ ., data = data_3)
+summary(KBO_lm_4)
+
+
+#Residual analysis
+par(mfrow = c(2,2))
+plot(KBO_lm)
