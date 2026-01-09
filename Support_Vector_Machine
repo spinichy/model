@@ -91,4 +91,17 @@ for(i in cost_values) {
   accuracy[j] <- mean(pred_letter_gaussian == letter_test$class)
   j <- j + 1
 }
-plot(x = cost_values, y = accuracy)
+
+plot(x = cost_values, y = accuracy, 
+     main = "Character prediction accuracy using SVM", 
+     pch = 1, type = "b",
+     ylim = c(0.92,1.0), xaxt = "n")
+axis(side = 1, at = cost_values)
+text(x = cost_values, y = accuracy, 
+     labels = paste0(round(accuracy*100,2),"%"), pos = 3)
+
+index_max <- which.max(accuracy)
+points(x = cost_values[index_max], 
+       y = accuracy[index_max], 
+       pch = 19, col = "red")
+grid()
