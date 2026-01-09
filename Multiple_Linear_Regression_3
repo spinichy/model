@@ -1,1 +1,46 @@
+###Step1. #Data collection
 
+
+library(regbook)
+data("KBO1")
+?KBO1
+
+
+##Step2. Data processing and exploration
+
+
+KBO_2011 <- KBO1
+str(KBO_2011)
+
+#NA values
+library(mice)
+md.pattern(KBO_2011)
+
+#change colnames
+colnames(KBO_2011) <- c("Salary", "Hit", "HR", "RBI", "Runs", "BB", 
+                        "C_Hits","C_Years", "Team", "Player" )
+
+
+#scatterplot
+pairs(KBO_2011)
+
+#Scatterplot, Histogram, Correlation
+library(GGally)
+ggpairs(KBO_2011[,1:8])
+
+plot(KBO_2011[,c(1,9,10)])
+KBO_2011$Team
+
+plot(x = KBO_2011$Team, y = KBO_2011$Salary)
+
+summary(KBO_2011$Salary)
+
+
+##Step3. Train model
+
+
+KBO_lm <- lm(formula = Salary ~ ., data = KBO_2011[,-10])
+summary(KBO_lm)
+
+
+##Step4. Evaluate model
