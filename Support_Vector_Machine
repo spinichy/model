@@ -1,3 +1,6 @@
+###Part 1
+
+
 ##Step1. Data collection
 
 
@@ -105,3 +108,105 @@ points(x = cost_values[index_max],
        y = accuracy[index_max], 
        pch = 19, col = "red")
 grid()
+
+
+
+###Part 2
+
+
+
+##Step1. Data collection
+library(tidyverse)
+data(iris)
+str(iris)
+
+
+##Step2. Data preparation and exploration
+
+
+library(mice)
+md.pattern(iris) #No NA value
+
+iris_sub <- iris %>% 
+  select("Sepal.Length","Sepal.Width", "Species") %>% 
+  subset(Species %in% c("setosa","versicolor"))
+
+str(iris_sub)
+         
+library(ggplot2)        
+ggplot(data = iris_sub, 
+       mapping = aes(x = Sepal.Length, y = Sepal.Width)) + 
+  geom_point(aes(color = Species))
+
+
+#split into train and test data
+index_train <- sample(x = 1:nrow(iris_sub), 
+                      size = nrow(iris_sub)*0.8, 
+                      replace = FALSE)
+
+train_iris_sub <- iris_sub[index_train,]
+test_iris_sub <- iris_sub[-index_train,]
+
+
+##Step3.Train Model
+
+
+library(e1071)
+set.seed(1234)
+model_iris_sub <- svm(Species ~ ., 
+                      data = iris_sub, 
+                      kernel = "linear", 
+                      cost = 1, 
+                      scale = FALSE) #standardization
+
+
+
+summary(model_iris_sub)
+index_support.vector <- model_iris_sub$index 
+
+alpha <- abs( t(model_iris_sub$coefs) )
+ys <- sign( t(model_iris_sub$coefs) )
+xs <- model_iris_sub$SV #x: support vectors
+
+w <- (alpha*ys) %*% xs;w
+bias <- t(ys) - (xs %*% t(w))
+mean(b) # 4.984947
+b <- model_iris_sub$rho #-4.941785
+
+
+ggplot(data = iris_sub, 
+       mapping = aes(x = Sepal.Length, y = Sepal.Width)) + 
+  geom_point(aes(color = Species)) + 
+  geom_point(data = iris_sub[index_support.vector,-3], shape = 21, size = 5) +
+  geom_abline(intercept = b/w[1,2], 
+              slope = -(w[1,1]/w[1,2]),  #middle boundary w1x1 + w2x2 + b = 0
+              lty = "dashed", lwd = 1)
+
+
+##Step4.Evaluate Model
+
+
+pred_iris_sub <- predict(object = model_iris_sub, 
+                         newdata = test_iris_sub )
+
+table(test_iris_sub$Species, pred_iris_sub, 
+      dnn = c("actual", "predict"))
+
+
+
+##Step5.Improve Model
+
+
+set.seed(1234)
+model_iris_sub_2 <- svm(Species ~ ., 
+                      data = iris_sub, 
+                      kernel = "linear", 
+                      cost = 100, 
+                      scale = FALSE)
+
+pred_iris_sub_2 <- predict(object = model_iris_sub_2, 
+                         newdata = test_iris_sub )
+
+table(test_iris_sub$Species, pred_iris_sub_2, 
+      dnn = c("actual", "predict"))
+
