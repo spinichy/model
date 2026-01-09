@@ -40,3 +40,88 @@ summary(KBO_2011$Salary)
 
 
 KBO_lm <- lm(formula = Salary ~ ., data = KBO_2011[,-10])
+summary(KBO_lm)
+
+##Step4. Evaluate model
+
+
+#Partial F-test
+anova(KBO_lm)
+
+drop1(object = KBO_lm, test = "F")
+
+KBO_lm_reduced <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, data = KBO_2011[,-10])
+anova(KBO_lm_reduced,KBO_lm)
+
+
+#Partial Regression Plot
+library(tidyverse)
+salary.C_Hits <- lm(formula = Salary ~ C_Hits, data = KBO_2011[,-10]) %>% 
+  resid()
+Hit.C_Hits <- lm(formula = Hit ~ C_Hits, data = KBO_2011[,-10]) %>% 
+  resid()
+
+plot(salary.C_Hits ~ Hit.C_Hits, 
+     main = "Partial Regression Plot")
+abline(lm(salary.C_Hits ~ Hit.C_Hits ))
+
+
+HR.C_Hits <- lm(formula = HR ~ C_Hits, data = KBO_2011[,-10]) %>% 
+  resid()
+BB.C_Hits <- lm(formula = BB ~ C_Hits, data = KBO_2011[,-10]) %>% 
+  resid()
+
+par(mfrow = c(1,2))
+plot(salary.C_Hits ~ HR.C_Hits, 
+     main = "Partial Regression Plot")
+abline(lm(salary.C_Hits ~ HR.C_Hits ))
+plot(salary.C_Hits ~ BB.C_Hits, 
+     main = "Partial Regression Plot")
+abline(lm(salary.C_Hits ~ BB.C_Hits ))
+
+
+#lack of fit test
+summary(KBO_lm_reduced)
+KBO_lm_reduced_lof <- lm(formula = Salary ~ 
+                           factor(Hit) 
+                         + factor(HR) 
+                         + factor(BB) 
+                         + factor(C_Hits), 
+                         data = KBO_2011[,-10])
+(662^2)*157
+anova(KBO_lm_reduced_lof)
+anova(KBO_lm_reduced,KBO_lm_reduced_lof)
+
+
+#Variable Transformation
+with(data = KBO_2011[,-10], 
+     pairs(Salary ~ Hit + HR + BB + C_Hits))
+
+
+#Standardized Regression Coefficient
+X <- model.matrix(KBO_lm_reduced)
+y <- model.response(KBO_lm_reduced$model)
+
+SSjj <- diag(t(X) %*% X) - nrow(X)*colMeans(X)^2
+SSyy <- sum(y^2) - length(y)*mean(y)^2
+
+sqrt(SSjj/SSyy)*coef(KBO_lm_reduced)
+
+
+#Multicollinearity
+X_cor <- cor(X[,-1])
+diag(solve(X_cor)) #determinant
+
+eigen(X_cor)
+
+library(regbook)
+summary(vif(KBO_lm_reduced))
+
+
+X_cor_2 <- cor(X[,-1][,c("HR","C_Hits")])
+eigen(X_cor_2)
+
+
+#Final model
+KBO_lm_final <- lm(formula = Salary ~ HR + C_Hits, data = KBO_2011[,-10])
+summary(KBO_lm_final)
