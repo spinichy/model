@@ -1,1 +1,94 @@
+##Step1. Data collection
 
+
+library(tidyverse)
+data_raw <- read.table(file = "letter-recognition.txt", sep = ",")
+str(data_raw)
+
+letter <- data_raw
+
+
+##Step2. Data preparation and exploration
+
+
+library(mice)
+md.pattern(letter) #No NA value
+
+summary(letter)
+
+colnames(letter) <- c("class", "xbox","ybox","width","high","onpix",
+                      "x-bar","y-bar","x2ba","y2bar","xybar","x2ybr",
+                      "xy2b"," x-ege","xegvy","y-ege","yegvx")
+colnames(letter) %>% 
+  unique() %>% 
+  length() #No duplicated colnames
+
+letter$class <- as.factor(letter$class) #factor(all information should numeric)
+
+str(letter)
+#split into train and test data
+
+index_train <- sample(x = 1:nrow(letter), 
+                      size = nrow(letter)*0.8, 
+                      replace = FALSE)
+letter_train <- letter[index_train ,]
+letter_test <- letter[-index_train ,]
+
+
+##Step3.Train Model
+
+
+library(kernlab)
+model_letter_linear <- ksvm(class ~ ., 
+                            data = letter_train, 
+                            kernel = "vanilladot",#Linear kernel
+                            C = 1) #Cost 1
+
+
+##Step4.Evaluate Model
+
+
+pred_letter <- predict(object = model_letter_linear, 
+                       newdata = letter_test)
+
+table(pred_letter, letter_test$class)
+table(pred_letter == letter_test$class) %>% 
+  prop.table()
+
+
+##Step5.Improve Model
+
+
+set.seed(1234) #Cross-validation, SMO. casue to find sigma of gaussian
+model_letter_gaussian <- ksvm(class ~ ., 
+                       data = letter_train, 
+                       kernel = "rbfdot",#gaussian kernel
+                       C = 1) #Cost 1
+
+pred_letter_gaussian <- predict(object = model_letter_gaussian, 
+                                newdata = letter_test)
+
+table(pred_letter_gaussian, letter_test$class)
+table(pred_letter_gaussian == letter_test$class) %>% 
+  prop.table() 
+
+
+
+cost_values <- c(1,seq(5,50,by=5));cost_values
+
+accuracy <- c()
+j <- 1
+for(i in cost_values) {
+  set.seed(1234)
+  model_letter_gaussian <- ksvm(class ~ ., 
+                                data = letter_train, 
+                                kernel = "rbfdot",
+                                C = i)
+  
+  pred_letter_gaussian <- predict(object = model_letter_gaussian, 
+                                  newdata = letter_test)
+  
+  accuracy[j] <- mean(pred_letter_gaussian == letter_test$class)
+  j <- j + 1
+}
+plot(x = cost_values, y = accuracy)
