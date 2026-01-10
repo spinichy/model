@@ -111,7 +111,9 @@ grid()
 
 
 
+
 ###Part 2
+
 
 
 
@@ -210,3 +212,115 @@ pred_iris_sub_2 <- predict(object = model_iris_sub_2,
 table(test_iris_sub$Species, pred_iris_sub_2, 
       dnn = c("actual", "predict"))
 
+
+
+
+###part3
+
+
+
+
+##Step1. Data collection
+library(tidyverse)
+library(AER)
+data("Affairs")
+str(Affairs)
+
+
+##Step2. Data preparation and exploration
+
+
+affair <- Affairs
+
+library(mice)
+md.pattern(affair) #No NA value
+
+affair$affairs <- factor(x = ifelse(affair$affairs > 0, 1, 0), 
+                         levels = c(1,0), 
+                         labels = c("Yes","No"))
+str(affair)
+
+
+#split into train and test data
+index_train <- sample(x = 1:nrow(affair), 
+                      size = nrow(affair)*0.7, 
+                      replace = FALSE)
+
+train_affair <- affair[index_train,]
+test_affair <- affair[-index_train,]
+
+table(train_affair$affairs)
+table(test_affair$affairs)
+
+##Step3.Train Model
+
+
+library(e1071)
+set.seed(1234)
+model_affair <- svm(affairs ~ ., 
+                    data = train_affair,
+                    kernel = "radial", 
+                    cost = 1,
+                    scale = TRUE) 
+
+summary(model_affair)
+
+#multidimensional scaling
+library(cluster)
+library(ggplot2)
+dist <- daisy(train_affair[,-1]) #distance matrix., if category, same = 0, not same = 1
+affair_mds <- cmdscale(d = dist, k = 2) %>% #eigen
+  data.frame()
+
+index_support.vector <- model_affair$index 
+
+ggplot(data = affair_mds , 
+       mapping = aes(x = X1, y = X2)) + 
+  geom_point(aes(color = train_affair[,1], 
+                 shape = train_affair[,1])) + 
+  geom_point(data = affair_mds[index_support.vector,], shape = 21, size = 5) +
+  labs(color = "affair",
+       shape = "affair")
+
+
+##Step4.Evaluate Model
+
+
+pred_affair <- predict(object = model_affair , 
+                       newdata = test_affair)
+
+table(test_affair$affairs, pred_affair, 
+      dnn = c("actual", "predict"))
+
+mean(test_affair$affairs == pred_affair) #0.8066298
+
+
+##Step5.Improve Model
+
+
+set.seed(1234)
+model_affair_2 <- tune.svm(affairs ~ ., 
+                     data = train_affair,
+                     kernel = "radial", 
+                     cost = 2^(-5:5),
+                     gamma = 10^(-3:3),
+                     scale = TRUE) 
+
+summary(model_affair_2)
+model_affair_2$best.parameters
+
+model_affair_3 <- svm(affairs ~ ., 
+                      data = train_affair,
+                      kernel = "radial", 
+                      cost = 2,
+                      gamma = 0.1,
+                      scale = TRUE) 
+
+
+pred_affair_2 <- predict(object = model_affair_3, 
+                         newdata = test_affair )
+
+table(test_affair$affairs, pred_affair_2, 
+      dnn = c("actual", "predict"))
+
+mean(test_affair$affairs == pred_affair_2) #0.8066298
