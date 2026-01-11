@@ -463,3 +463,45 @@ table(pred_credit_xgb_class_cv ,credit_test_label,
       dnn = c("predict", "actual"))
 mean(pred_credit_xgb_class_cv  == credit_test_label) #0.72
 
+
+
+###Summary of Results for Decision Tree-Based Ensemble Models
+df <- data.frame(
+  models = c("decision.tree", "Bagging", "Boosting", "rf", "gbm","xgb"), 
+  predicts = c(68, 71.33, 74.33, 74.67, 73.67, 71.33), 
+  predicts_cv = c(68, 73.33, 72, 71.67, 74, 72)
+)
+
+
+t <- seq(0, 2*pi, length.out = 100)
+cx <- 4  # gbm이 x축에서 몇 번째인지 (예: rf, gbm, xgboost 순이면 2)
+cy <- 0.74  # 원의 중심 y좌표
+
+windows()
+
+library(ggplot2)
+ggplot(data = df, 
+       mapping = aes(x = models, y = round(predicts_cv/100,2) )
+       ) + 
+  geom_col(fill = "yellowgreen") + 
+  geom_text(aes(label = paste0(round(predicts_cv/100, 2) * 100, "%")), 
+            vjust = -0.5,     
+            size = 4.5,       
+            fontface = "bold") + 
+  scale_y_continuous(limits = c(0, 1), 
+                     breaks = seq(0, 1, by = 0.1)) + 
+  labs(x = "", y = "prediction", 
+       title = "Summary of Results for Decision Tree-Based Ensemble Models") + 
+  theme(axis.text.x.bottom = element_text(size = 13, face = "bold.italic", color = "red"), 
+        axis.title.y.left = element_text(size = 13, angle = 90, vjust = 0.5, 
+                                         margin = margin(r = 20)),
+        title = element_text(size = 15, face = "bold.italic"), 
+        panel.background = element_rect(fill = "white", color = "black", linewidth = 0.5),
+        panel.grid.major = element_line(color = "grey90"), 
+        panel.grid =  element_line(color = "grey90")) +
+  annotate("path",
+           x = cx + 0.2 * cos(t),   # 0.2는 원의 가로 반지름
+           y = cy + 0.05 * sin(t),  # 0.05는 원의 세로 반지름
+           color = "red",
+           linewidth = 1,
+           linetype = "dashed")
