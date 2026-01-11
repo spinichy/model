@@ -1,1 +1,465 @@
+##Step1. Data collection
+
+
+data_raw <- read.table(file = "german.data.txt")
+str(data_raw)
+
+
+##Step2. Data preparation and exploration
+
+
+library(tidyverse)
+german_credit <- data_raw
+
+table(german_credit$V1)
+checking_account <- case_when(german_credit$V1 == "A11" ~ "<    0 DM",
+                              german_credit$V1 == "A12" ~ "<  200 DM",
+                              german_credit$V1 == "A13" ~ ">= 200 DM",
+                              german_credit$V1 == "A14" ~ "no checking account") %>% 
+  factor(levels = c("<    0 DM", "<  200 DM",  ">= 200 DM", "no checking account"), 
+         labels = c("<    0 DM", "<  200 DM",  ">= 200 DM", "no checking account"))
+checking_account
+
+Duration_in_month <- german_credit$V2
+
+table(german_credit$V3)  
+Credit_history <- case_when(german_credit$V3 == "A30" ~ "better",
+                            german_credit$V3 == "A31" ~ "good",
+                            german_credit$V3 == "A32" ~ "normal",
+                            german_credit$V3 == "A33" ~ "bad",
+                            german_credit$V3 == "A34" ~ "worse") %>% 
+  factor(levels = c("better", "good", "normal", "bad", "worse"), 
+         labels = c("better", "good", "normal", "bad", "worse"))
+
+
+table(german_credit$V4)  
+Purpose <-  case_when(german_credit$V4 == "A40" ~ "car (new)",
+                      german_credit$V4 == "A41" ~ "car (used)",
+                      german_credit$V4 == "A42" ~ "furniture/equipment",
+                      german_credit$V4 == "A43" ~ "radio/television",
+                      german_credit$V4 == "A44" ~ "domestic appliances",
+                      german_credit$V4 == "A45" ~ "repairs",
+                      german_credit$V4 == "A46" ~ "education",
+                      german_credit$V4 == "A47" ~ "vacation",
+                      german_credit$V4 == "A48" ~ "retraining",
+                      german_credit$V4 == "A49" ~ "business",
+                      german_credit$V4 == "A410" ~ "others") %>% 
+  as.factor()
+
+Credit_amount <- german_credit$V5
+
+table(german_credit$V6)  
+Savings_account <- case_when(german_credit$V6 == "A61" ~ "< 100 DM",
+                             german_credit$V6 == "A62" ~ "100 <= <500 DM",
+                             german_credit$V6 == "A63" ~ "500 <= <1000 DM",
+                             german_credit$V6 == "A64" ~ "> 1000 DM",
+                             german_credit$V6 == "A65"  ~ "no savings account") %>% 
+  factor(levels = c("< 100 DM", "100 <= <500 DM", "500 <= <1000 DM", "> 1000 DM", "no savings account"), 
+         labels = c("< 100 DM", "100 <= <500 DM", "500 <= <1000 DM", "> 1000 DM", "no savings account"))
+
+table(german_credit$V7)  
+Present_employment_since <-  case_when(german_credit$V7 == "A71" ~ "unemployed",
+                                       german_credit$V7 == "A72" ~ "< 1 years",
+                                       german_credit$V7 == "A73" ~ "1<= <4 years",
+                                       german_credit$V7 == "A74" ~ "4<= <7 years",
+                                       german_credit$V7 == "A75" ~ "> 7 years") %>% 
+  factor(levels = c("unemployed",  "< 1 years", "1<= <4 years",  "4<= <7 years", "> 7 years"), 
+         labels = c("unemployed",  "< 1 years", "1<= <4 years",  "4<= <7 years", "> 7 years"))
+
+
+Installment_rate_DI <- german_credit$V8
+
+table(german_credit$V9) 
+Personal_sex_status <- case_when(german_credit$V9 == "A91" ~ "male_divorced/separated",
+                                 german_credit$V9 == "A92" ~ "female_divorced/separated/married",
+                                 german_credit$V9 == "A93" ~ "male_single",
+                                 german_credit$V9 == "A94" ~ "married/widowed") %>% 
+  as.factor()
+
+table(german_credit$V10) 
+Other_debtors <- case_when(german_credit$V10 == "A101" ~ "none",
+                           german_credit$V10 == "A102" ~ "co-applicant",
+                           german_credit$V10 == "A103" ~ "guarantor") %>% 
+  as.factor()
+
+
+Present_residence_since <- german_credit$V11
+
+
+table(german_credit$V12) 
+Property <- case_when(german_credit$V12 == "A121" ~ "real estate",
+                      german_credit$V12 == "A122" ~ "savings agreement",
+                      german_credit$V12 == "A123" ~ "car or other",
+                      german_credit$V12 == "A124" ~ "no property") %>% 
+  as.factor()
+
+Age_in_years <- german_credit$V13
+
+table(german_credit$V14) 
+Other_installment_plans <- case_when(german_credit$V14 == "A141" ~ "bank",
+                                     german_credit$V14 == "A142" ~ "stores",
+                                     german_credit$V14 == "A143" ~ "none") %>% 
+  as.factor()
+
+table(german_credit$V15) 
+Housing <- case_when(german_credit$V15 == "A151" ~ "rent",
+                     german_credit$V15 == "A152" ~ "own",
+                     german_credit$V15 == "A153" ~ "for free") %>% 
+  as.factor()
+
+existing_credits <- german_credit$V16
+
+table(german_credit$V17) 
+Job <- case_when(german_credit$V17 == "A171" ~ "unskilled_non-resident",
+                 german_credit$V17 == "A172" ~ "unskilled_resident",
+                 german_credit$V17 == "A173" ~ "skilled employee ",
+                 german_credit$V17 == "A174" ~ "highly qualified employee") %>% 
+  as.factor()
+
+people_liable <- german_credit$V18
+
+table(german_credit$V19) 
+Telephone <- case_when(german_credit$V19 == "A191" ~ "none",
+                       german_credit$V19 == "A192" ~ "yes") %>% 
+  as.factor()
+
+table(german_credit$V20) 
+foreign_worker <- case_when(german_credit$V20 == "A201" ~ "yes",
+                            german_credit$V20 == "A202" ~ "no") %>% 
+  as.factor()
+
+table(german_credit$V21)
+
+default <- case_when(german_credit$V21 == 1 ~ "no",
+                     german_credit$V21 == 2 ~ "yes") %>% 
+  as.factor()
+
+
+Credit <- 
+  data.frame(checking_account = checking_account,
+             Duration_in_month = Duration_in_month,
+             Credit_history = Credit_history,
+             Purpose = Purpose,
+             Credit_amount = Credit_amount,
+             Savings_account = Savings_account,
+             Present_employment_since = Present_employment_since,
+             Installment_rate_DI = Installment_rate_DI,
+             Personal_sex_status = Personal_sex_status,
+             Other_debtors = Other_debtors,
+             Present_residence_since = Present_residence_since,
+             Property = Property,
+             Age_in_years = Age_in_years,
+             Other_installment_plans = Other_installment_plans,
+             Housing = Housing,
+             existing_credits = existing_credits,
+             Job = Job,
+             people_liable = people_liable,
+             Telephone = Telephone,
+             foreign_worker = foreign_worker,
+             default = default) 
+
+str(Credit)
+
+
+#split into train and test data
+set.seed(1234)
+train_index <- sample(x = 1:length(Credit$default),
+                      size =  length(Credit$default)*0.7, 
+                      replace = FALSE)
+
+Credit_train <- Credit[train_index,]
+Credit_test <- Credit[-train_index,]
+
+
+Credit_train$default %>% 
+  as.character() %>% 
+  table() %>% 
+  prop.table()
+
+
+##Step3.Train Model
+
+
+##decision-tree train & test
+library(C50)
+Credit_model <- C5.0(default ~ ., data = Credit_train)
+pred_Credit_dc.tree <- predict(object = Credit_model, 
+                               newdata = Credit_test)
+
+table(pred_Credit_dc.tree, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_Credit_dc.tree == Credit_test$default) #0.68
+
+
+
+##Step4.Evaluate Model
+
+
+#bagging
+library(ipred)
+set.seed(123)
+mybag <- bagging(formula = default  ~ ., 
+                 data = Credit_train, 
+                 nbagg = 25) #number of decision tree
+
+pred_credit_bag <- predict(object = mybag, 
+                           newdata = Credit_test)
+
+table(pred_credit_bag, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_bag == Credit_test$default) #0.7133333
+
+
+#boosting
+library(adabag)
+set.seed(123)
+myadabag <- boosting(formula = default  ~ ., 
+                     data = Credit_train,
+                     mfinal = 100) #the number of iterations
+
+pred_credit_adabag  <- predict(object = myadabag, 
+                               newdata = Credit_test)
+
+table(pred_credit_adabag$class, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_adabag$class == Credit_test$default) #0.7433333
+
+
+#random forest
+library(randomForest)
+set.seed(123)
+
+rf <- randomForest(formula = default  ~ ., 
+                   data = Credit_train, 
+                   ntree = 500, 
+                   mtry = sqrt( ncol(Credit_train[,-1]) ))
+
+pred_credit_rf  <- predict(object = rf , 
+                           newdata = Credit_test)
+
+table(pred_credit_rf, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_rf == Credit_test$default) #0.7466667                  
+
+
+#Gradient boosting(GBM)
+library(gbm)
+set.seed(123)
+Credit_train$default <- ifelse(Credit_train$default == "no", 0, 1) %>% 
+  as.factor()
+m_gbm <- gbm(default  ~ ., 
+             distribution = "bernoulli",
+             data = Credit_train, 
+             n.tree = 100, 
+             interaction.depth = 1, 
+             n.minobsinnode = 10, 
+             shrinkage = 0.1)
+
+pred_credit_m_gbm <- predict(object = m_gbm  , 
+                           newdata = Credit_test, 
+                           type = "response")
+pred_credit_gbm <- ifelse(pred_credit_m_gbm > 0.5, "yes", "no")
+
+table(pred_credit_gbm, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_gbm == Credit_test$default) #0.7366667
+
+
+#XGBoost
+library(Matrix)
+Credit_train_matrix <- sparse.model.matrix(object =  ~ .-default,
+                                           data = Credit_train)
+Credit_test_matrix <- sparse.model.matrix(object =  ~ .-default, 
+                                          data = Credit_test)
+
+dim(Credit_train_matrix)
+print(Credit_train_matrix) 
+
+Credit_train_matrix <- Credit_train_matrix[,-1] #remove intercept
+Credit_test_matrix <- Credit_test_matrix[,-1] 
+
+Credit_train$default
+Credit_test$default
+
+credit_train_label <- Credit_train$default
+credit_test_label <- ifelse(Credit_test$default == "yes", 1, 0)
+
+
+library(xgboost)
+params.xgb <- list(objective = "binary:logistic", #error function: Log Loss
+                   max_depth = 6, #maximum depth of a tree
+                   eta = 0.3, #learning rate:
+                   colsample_bytree = 1, # 1 = every column variables
+                   min_child_weight = 1,#minimum sum of instance weight (hessian) needed in a child
+                   subsample = 1) #1 = every column data 
+
+set.seed(123)
+xgb_credit <- xgboost(params = params.xgb, 
+                      data = Credit_train_matrix, 
+                      label = credit_train_label, 
+                      nrounds = 100, 
+                      verbose = 1, 
+                      print_every_n = 10)
+
+pred_credit_xgb <- predict(object = xgb_credit  , 
+                             newdata = Credit_test_matrix)
+
+pred_credit_xgb_class <- ifelse(pred_credit_xgb > 0.5,1,0)
+ 
+table(pred_credit_xgb_class,credit_test_label, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_xgb_class == credit_test_label) #0.7133333
+
+
+
+##Step5. Improve Model
+
+
+
+#bagging
+library(caret)
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 10)
+mybag_cv <- train(default ~ ., 
+                  data = Credit_train,
+                  method = "treebag", 
+                  trControl = ctrl)
+
+pred_credit_bag_cv <- predict(object = mybag_cv, 
+                           newdata = Credit_test)
+
+table(pred_credit_bag_cv, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_bag_cv == Credit_test$default) #0.7333333
+
+
+#boosting
+install.packages("fastAdaboost")
+library(caret)
+library(fastAdaboost)
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 10)
+myadabag_cv <- train(default ~ ., 
+                    data = Credit_train,
+                    method = "adaboost", 
+                    trControl = ctrl)
+myadbag_cv 
+pred_credit_adabag_cv <- predict(object = myadbag_cv,
+                                 newdata = Credit_test)
+
+table(pred_credit_adabag_cv, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_adabag_cv  == Credit_test$default) # 0.72
+
+
+#random forest
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 10)
+rf_cv <- train(default ~ ., 
+               data = Credit_train,
+               method = "rf", 
+               trControl = ctrl)
+
+pred_credit_rf_cv <- predict(object = rf_cv, 
+                             newdata = Credit_test)
+
+table(pred_credit_rf_cv, Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_rf_cv == Credit_test$default) #0.7166667
+
+
+#Gradient boosting(GBM)
+set.seed(123)
+ctrl <- trainControl(method = "cv", number = 10, 
+                     selectionFunction = "best")
+grid_gbm <- expand.grid(
+  n.trees = c(100,150,200),
+  interaction.depth = c(1,2,3), 
+  shrinkage = c(0.01, 0.1, 0.3),
+  n.minobsinnode = 10
+)
+
+m_gbm_best.parameter <- train(default  ~ .,
+                              data = Credit_train, 
+                              method = "gbm",
+                              trControl = ctrl, 
+                              tuneGrid = grid_gbm)
+
+m_gbm_best.parameter$bestTune
+
+Credit_train$default <- Credit_train$default %>% 
+  as.character() %>% 
+  as.numeric()
+
+m_gbm_cv <- gbm(default  ~ ., 
+                distribution = "bernoulli",
+                data = Credit_train, 
+                n.tree = 150, 
+                interaction.depth = 2, 
+                n.minobsinnode = 10, 
+                shrinkage = 0.1)
+
+pred_credit_m_gbm_cv  <- predict(object = m_gbm_cv , 
+                                 newdata = Credit_test, 
+                                 type = "response")
+
+pred_credit_gbm_cv <- ifelse(pred_credit_m_gbm_cv  > 0.5, "yes", "no")
+
+table(pred_credit_gbm_cv , Credit_test$default, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_gbm_cv  == Credit_test$default) #0.74
+
+
+#XGBoost
+grid_xgb <- expand.grid(
+  eta = c(0.3,0.4),
+  max_depth = c(1,2,3),
+  colsample_bytree = c(0.6,0.8),
+  subsample = c(0.5, 0.75, 1),
+  nrounds = c(50,100,150), #number of tree
+  gamma = c(0,1), #minimum information gain
+  min_child_weight = c(1,2,3)
+)
+
+library(caret)
+ctrl <- trainControl(method = "cv", number = 10, 
+                     selectionFunction = "best")
+
+Credit_train$default <- Credit_train$default %>% 
+  as.factor()
+xgb_best.parameter <- train(default  ~ .,
+                            data = Credit_train, 
+                            method = "xgbTree",
+                            trControl = ctrl, 
+                            tuneGrid = grid_xgb)
+
+xgb_best.parameter$bestTune
+ 
+
+library(xgboost)
+params.xgb_cv <- list(objective = "binary:logistic",
+                      max_depth = 2, 
+                      eta = 0.4, 
+                      gamma = 1, 
+                      colsample_bytree = 0.8,
+                      min_child_weight = 2,
+                      subsample = 0.75) 
+                   
+
+set.seed(123)
+xgb_credit_cv <- xgboost(params = params.xgb_cv, 
+                         data = Credit_train_matrix, 
+                         label = credit_train_label, 
+                         nrounds = 150, 
+                         verbose = 1, 
+                         print_every_n = 10)
+
+pred_credit_xgb_cv <- predict(object = xgb_credit_cv  , 
+                           newdata = Credit_test_matrix)
+
+pred_credit_xgb_class_cv <- ifelse(pred_credit_xgb_cv > 0.5,1,0)
+
+table(pred_credit_xgb_class_cv ,credit_test_label, 
+      dnn = c("predict", "actual"))
+mean(pred_credit_xgb_class_cv  == credit_test_label) #0.72
 
