@@ -1,1 +1,101 @@
+##Step1. Data collection
+
+
+library(arules)
+data("Groceries")
+
+
+##Step2. Data preparation and exploration
+
+
+str(Groceries)
+summary(Groceries)
+
+transaction <- 9835
+itmes <- 169
+locate <- 9835*169
+density <- 0.02609146 
+buying <- locate*density
+buying_avg <- buying/transaction
+
+toLongFormat(groceries, decode = FALSE)
+
+inspect(Groceries[1:5])
+
+itemFrequency(groceries[,1:3])
+
+itemFrequencyPlot(groceries, support = 0.1)
+
+itemFrequencyPlot(groceries, topN = 20)
+
+library(tidyverse)
+(Groceries[1:5]) %>% 
+  image()
+
+sample(x = groceries, size = 100) %>% 
+  image()
+
+
+##Step3. Train Models
+
+
+apriori(groceries)
+
+groceries_apriori <- apriori(data = groceries, 
+                             parameter = list(support = 60/transaction, 
+                                              confidence = 0.25, 
+                                              minlen = 2) )
+
+
+##Step4. Evaluate Models
+
+
+summary(groceries_apriori)
+
+inspect(groceries_apriori[1:3])
+
+
+inspect( sort(groceries_apriori, by = "lift")[1:5] )
+
+berry <- subset(groceries_apriori, items %in% "berries")
+
+inspect(berry)
+
+as(groceries_apriori, Class = "data.frame") %>% 
+  View()
+
+
+
+library(arulesViz)
+
+#Scatter Plot
+windows()
+plot(groceries_apriori, method = "scatterplot", engine = "ggplot2")
+
+#Graph-based visualization
+sub_rules <- head(sort(groceries_apriori, by = "lift"), 10)
+plot(sub_rules, method = "graph", engine = "htmlwidget")
+
+#Grouped Matrix
+plot(sub_rules, method = "grouped")
+
+
+##Step5. Improve Models
+
+
+#eclat model
+groceries_eclat <- eclat(data = groceries, support = 60/transaction)
+inspect(groceries_eclat[1:5])
+
+groceries_eclat_2 <- ruleInduction(x = groceries_eclat, confidence = 0.25)
+inspect(groceries_eclat_2[1:5])
+groceries_eclat_2
+
+
+#FP-growth model
+groceries_fp.growth <- rCBA::fpgrowth(groceries, 
+                                      support = 60/transaction,
+                                      confidence = 0.25, 
+                                      maxLength = as.integer(10))
+
 
