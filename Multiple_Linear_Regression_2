@@ -42,6 +42,7 @@ summary(KBO_2011$Salary)
 KBO_lm <- lm(formula = Salary ~ ., data = KBO_2011[,-10])
 summary(KBO_lm)
 
+
 ##Step4. Evaluate model
 
 
