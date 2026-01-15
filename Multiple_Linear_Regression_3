@@ -1,6 +1,6 @@
 ###Step1. #Data collection
 
-
+library(tidyverse)
 library(regbook)
 data("KBO1")
 ?KBO1
@@ -39,8 +39,380 @@ summary(KBO_2011$Salary)
 ##Step3. Train model
 
 
+#first model
 KBO_lm <- lm(formula = Salary ~ ., data = KBO_2011[,-10])
 summary(KBO_lm)
 
+#reduced model
+KBO_lm_reduced <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, data = KBO_2011[,-10])
+
+#Final model
+KBO_lm_final <- lm(formula = Salary ~ HR + C_Hits, data = KBO_2011[,-10])
+
+
+
+#residuals
+
 
 ##Step4. Evaluate model
+summary(KBO_lm_reduced)
+summary(KBO_lm_final)
+
+library(car)
+outlier_KBO <- outlierTest(KBO_lm_reduced)
+outlier_KBO
+
+outlier_KBO_index <- names(outlier_KBO$rstudent) %>% 
+  as.numeric()
+
+KBO_2011[outlier_KBO_index,]
+fitted(KBO_lm_final)[outlier_KBO_index]
+
+
+X <- model.matrix(KBO_lm_reduced)
+n <- nrow(X)
+p <- ncol(X) 
+
+#internal sudentized residual
+internal_residual <- rstandard(KBO_lm_final)
+ri <- internal_residual
+
+#beta statistic
+p_value <- pbeta(q = (ri^2)/(n-p), 
+                 shape1 = 1/2, shape2 = (n-p-1)/2, 
+                 lower.tail = FALSE)
+
+
+ri_df <- data.frame(
+  ri = ri, 
+  p_value = p_value 
+) %>% 
+  mutate(outlier = ifelse(p_value < 0.05, "outlier", "")) %>% 
+  mutate(id = row_number())
+
+library(ggplot2)
+ggplot(data = ri_df, 
+       mapping = aes(x = id, y = p_value, color = outlier)) + 
+  geom_point() + 
+  geom_text(data = filter(ri_df, outlier == "outlier"), 
+            aes(label = id), 
+            vjust = -1,    
+            show.legend = FALSE) +
+  scale_color_manual(values = c("outlier" = "red"),
+                     breaks = "outlier") + 
+  labs(x = "Index", y = "P-value", color = NULL) + 
+  theme_bw()
+
+outlier_ri_index <- which(ri_df$outlier == "outlier")
+
+KBO_2011[outlier_ri_index,] %>% 
+  mutate(pred_Salary = fitted(KBO_lm_final)[outlier_ri_index]) %>% 
+  mutate(compare = ifelse(Salary > pred_Salary, "Overrate", " Underrate"))
+
+
+#external sudentized residual
+external_residual <- rstudent(KBO_lm_final)
+re <- external_residual
+
+#t statistic
+p_value_t <- 2*pt(q = abs(re), df = n-p-1, lower.tail = FALSE) #
+
+re_df <- data.frame(
+  re = re, 
+  p_value = p_value_t 
+) %>% 
+  mutate(outlier = ifelse(p_value < 0.05, "outlier", "")) %>% 
+  mutate(id = row_number())
+
+ggplot(data = re_df, 
+       mapping = aes(x = id, y = p_value, color = outlier)) + 
+  geom_point() + 
+  geom_text(data = filter(re_df, outlier == "outlier"), 
+            aes(label = id), 
+            vjust = -1,    
+            show.legend = FALSE) +
+  scale_color_manual(values = c("outlier" = "red"),
+                     breaks = "outlier") + 
+  labs(x = "Index", y = "P-value", color = NULL) + 
+  theme_bw()
+
+outlier_re_index <- which(re_df$outlier == "outlier")
+
+setdiff(outlier_ri_index, outlier_re_index)
+setdiff(outlier_re_index, outlier_ri_index)
+
+
+#leverage value
+
+
+#high leverage
+hat_value_KBO <- hatvalues(KBO_lm_reduced) #same code: diag( X %*% solve(t(X)%*%X) %*% t(X) )
+hat_value_mean <- p/n
+
+high_leverage_index <- which( ifelse(hat_value_KBO > hat_value_mean*2, "high_leverage", "") == "high_leverage" )
+
+KBO_2011[high_leverage_index ,]
+
+
+#Mahalanobis Distance
+X_mah <- X[,-1]
+X_mah
+
+m_dist <- mahalanobis(x = X_mah, center = colMeans(X_mah), cov = cov(X_mah)) #Mahalanobis Distance square
+threshold <- qchisq(p = 0.95, df = ncol(X_mah))
+threshold.2 <-  qchisq(p = 0.99, df = ncol(X_mah))
+
+mahal_df <- data.frame(
+  id = 1:nrow(X_mah),
+  m_dist = m_dist
+) %>%
+  mutate(High_Leverage = ifelse(m_dist > threshold, "High_Leverage", "")) %>% 
+  mutate(High_Leverage2 = ifelse(m_dist > threshold.2, "High_Leverage", ""))
+
+mahal_High_Leverage_index <- which(mahal_df$High_Leverage == "High_Leverage")
+
+library(ggplot2)
+ggplot(mahal_df, aes(x = id, y = m_dist, color = High_Leverage)) +
+  geom_point() +
+  geom_hline(yintercept = c(threshold,threshold.2), linetype = "dashed", color = "blue") +
+  geom_text(data = filter(mahal_df, High_Leverage == "High_Leverage"), 
+            aes(label = id), vjust = -1, show.legend = FALSE) +
+  scale_color_manual(values = c("High_Leverage" = "red")) +
+  labs(title = "Mahalanobis Distance for High_Leverage Detection",
+       subtitle = paste("Chi-square Threshold (df =", ncol(X_mah),")", round(threshold, 2)),
+       x = "Observation Index", y = "Mahalanobis Distance", color = NULL)+
+  theme_bw()
+
+High_Leverage_index <- which(mahal_df$High_Leverage2 == "High_Leverage")
+KBO_2011[High_Leverage_index,]
+
+
+#Influential observation
+
+H.leverage_outlier <- intersect(outlier_ri_index, High_Leverage_index)
+pure_outlier <- setdiff(outlier_ri_index, High_Leverage_index)
+pure_H.leverage <- setdiff(High_Leverage_index, outlier_ri_index)
+
+
+A <- KBO_2011[H.leverage_outlier,] %>% 
+  mutate(category = "H.leverage & outlier")
+B <- KBO_2011[pure_outlier ,] %>% 
+  mutate(category = "outlier")
+C <- KBO_2011[pure_H.leverage  ,] %>% 
+  mutate(category = "H.leverage")
+df <- rbind(A,B,C) 
+
+
+#compare reduce model with remove H.leverage & outlier
+KBO_lm_reduced <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, data = KBO_2011[,-10])
+KBO_lm_reduced_remove.1 <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, 
+                              data = KBO_2011[-c(H.leverage_outlier ),-10])
+KBO_lm_reduced_remove.2 <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, 
+                              data = KBO_2011[-c(outlier_ri_index),-10])
+KBO_lm_reduced_remove.3 <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, 
+                              data = KBO_2011[-c(H.leverage_outlier,pure_outlier),-10])
+
+summ_1 <- summary(KBO_lm_reduced)
+s1 <- sqrt( sum(resid(summ_1)^2)/KBO_lm_reduced$df.residual )
+r.s_1 <- summ_1$r.squared 
+
+summ_2 <- summary(KBO_lm_reduced_remove.1)
+s2 <- sqrt( sum(resid(summ_2)^2)/KBO_lm_reduced_remove.1$df.residual )
+r.s_2 <- summ_2$r.squared
+
+summ_3 <- summary(KBO_lm_reduced_remove.2)
+s3 <- sqrt( sum(resid(summ_3)^2)/KBO_lm_reduced_remove.2$df.residual )
+r.s_3 <- summ_3$r.squared 
+
+summ_4 <- summary(KBO_lm_reduced_remove.3)
+s4 <- sqrt( sum(resid(summ_4)^2)/KBO_lm_reduced_remove.3$df.residual )
+r.s_4 <- summ_4$r.squared 
+
+compare_outlier_H.leverage <- rbind(c(s1,s2,s3,s4),
+                                    c(r.s_1,r.s_2,r.s_3,r.s_4)) %>% 
+  as.data.frame()
+colnames(compare_outlier_H.leverage) <- c("reduce_model","H.leverage & outlier","outlier", "H.leverage or outlier")
+rownames(compare_outlier_H.leverage) <- c("error", "R.squared")
+
+
+cbind(summ_1$coefficients[,1:2],summ_2$coefficients[,1:2]) 
+cbind(summ_1$coefficients[,1:2],summ_3$coefficients[,1:2])       
+cbind(summ_1$coefficients[,1:2],summ_4$coefficients[,1:2])       
+compare_outlier_H.leverage 
+
+
+#Cook's distance
+cook <- cooks.distance(KBO_lm_reduced)
+plot(x = 1:n, y = cook, xlab = "Index", ylab = "Cook's distance")
+threshold_cook <- c(1,4/n, 4/(n-p-1))
+abline(h = threshold_cook, lty = "dashed", col = "red")
+text(x = 1, y = threshold_cook, labels = "Threshold", pos = 3, col = "red")
+
+cooks.distance_index <- which(cooks.distance(KBO_lm_reduced) > max(threshold_cook <- c(4/n, 4/(n-p-1))))
+text(x = cooks.distance_index, 
+     y = cook[cooks.distance_index], 
+     labels = cooks.distance_index, 
+     pos = 3,       # 3은 점의 위쪽(Top)에 표시
+     col = "blue",  # 구분하기 쉽게 파란색 사용
+     cex = 0.8)
+
+setdiff(outlier_ri_index, cooks.distance_index)
+setdiff(cooks.distance_index, outlier_ri_index) #1 27 38 46
+
+plot(KBO_lm_reduced, which = 4)
+High_Leverage_index
+
+
+#DEBETAS
+dfb <- dfbetas(KBO_lm_reduced)
+dfb_no_int <- dfb[, -1] 
+n <- nrow(dfb_no_int)
+p_vars <- ncol(dfb_no_int)
+threshold_dfb <- 2 / sqrt(n)
+
+
+par(mfrow = c(2, 2)) 
+
+
+for(i in 1:p_vars) {
+
+  current_val <- dfb_no_int[, i]
+  var_name <- colnames(dfb_no_int)[i]
+  
+
+  plot(current_val, type = "h", 
+       main = paste("DFBETAS:", var_name), 
+       ylab = "DFBETAS", xlab = "Index",
+       ylim = c(min(current_val, -threshold_dfb)*1.2, max(current_val, threshold_dfb)*1.2)) 
+
+
+  abline(h = c(threshold_dfb, -threshold_dfb), col = "red", lty = 2)
+  
+  idx <- which(abs(current_val) > threshold_dfb)
+  if(length(idx) > 0) {
+    text(x = idx, y = current_val[idx], 
+         labels = idx, pos = 3, col = "blue", cex = 0.8)
+  }
+}
+DFBETAS_index <- which(abs(current_val) > threshold_dfb)
+
+outlier_ri_index
+
+
+#dㄹffits
+dffit_values <- dffits(KBO_lm_reduced)
+
+n <- nrow(KBO_lm_reduced$model)
+p <- length(coef(KBO_lm_reduced))
+threshold_dffits <- 2 * sqrt(p / n)
+
+influential_dffits <- which(abs(dffit_values) > threshold_dffits)
+
+par(mfrow = c(1, 1)) 
+plot(dffit_values, type = "h", 
+     main = "DFFITS Plot", 
+     xlab = "Index", ylab = "DFFITS",
+     ylim = c(min(dffit_values, -threshold_dffits)*1.5, max(dffit_values, threshold_dffits)*1.5))
+
+abline(h = c(threshold_dffits, -threshold_dffits), col = "red", lty = "dashed")
+
+if(length(influential_dffits) > 0) {
+  text(x = influential_dffits, 
+       y = dffit_values[influential_dffits], 
+       labels = influential_dffits, 
+       pos = ifelse(dffit_values[influential_dffits] > 0, 3, 1), 
+       col = "blue", cex = 0.8)
+}
+
+influential_dffits
+cooks.distance_index
+
+which( abs(internal_residual - external_residual)>0.01 )
+
+
+#COVRATIO
+cov_values <- covratio(KBO_lm_reduced)
+
+n <- nrow(KBO_lm_reduced$model)
+p <- length(coef(KBO_lm_reduced))
+
+lower_bound <- 1 - (3 * p / n)
+upper_bound <- 1 + (3 * p / n)
+
+influential_cov <- which(cov_values < lower_bound | cov_values > upper_bound)
+
+plot(cov_values, type = "h", 
+     main = "COVRATIO Plot", 
+     xlab = "Index", ylab = "COVRATIO")
+
+abline(h = c(lower_bound, upper_bound), col = "red", lty = "dashed")
+abline(h = 1, col = "gray")
+
+if(length(influential_cov) > 0) {
+  text(x = influential_cov, 
+       y = cov_values[influential_cov], 
+       labels = influential_cov, 
+       pos = 3, col = "blue", cex = 0.8)
+}
+
+outlier_ri_index
+
+setdiff(outlier_ri_index, influential_cov)#25
+setdiff(influential_cov, outlier_ri_index) #1  2  3  5  6  8 11 15 16 18 20 41
+
+
+#COMMON (intesection)
+influence_list <- list(
+  cooks = cooks.distance_index,
+  dfbetas = DFBETAS_index,
+  dffits = influential_dffits,
+  covratio = influential_cov
+)
+
+
+common_influential_obs <- Reduce(intersect, influence_list)
+
+setdiff(common_influential_obs,outlier_ri_index) #1
+setdiff(outlier_ri_index,common_influential_obs) #35
+
+
+KBO_2011[outlier_re_index,]
+
+#final dual model
+summary(KBO_lm_reduced_remove.2)
+summary(KBO_lm_final)
+
+
+##Improve model
+
+par(mfrow = c(1,2))
+
+n <- nrow(model.matrix(KBO_lm_reduced_remove.2))
+plot(x = 1:n, y = resid(KBO_lm_reduced_remove.2), 
+     main = "X: Hit, HR, BB, C_Hits", 
+     xlab = "Observations", ylab = "residuals")
+n <- nrow(model.matrix(KBO_lm_final))
+plot(x = 1:n, y = resid(KBO_lm_final), 
+     main = "X: HR, C_Hits",
+     xlab = "Observations", ylab = "residuals")
+
+library(lmtest)
+dwtest(KBO_lm_reduced_remove.2)
+dwtest(KBO_lm_final)
+
+
+#Improve independence
+KBO_2011$C_Years
+
+lm(formula = Salary ~ Hit + HR + BB + C_Hits + C_Years, 
+   data = KBO_2011[-c(outlier_ri_index),-10]) %>% 
+  dwtest()
+
+
+lm(formula = log(Salary) ~ Hit + HR + BB + C_Hits + C_Years, 
+   data = KBO_2011[-c(outlier_ri_index),-10]) %>% 
+  dwtest()
+
+KBO_lm_reduced_final <- lm(formula = log(Salary) ~ Hit + HR + BB + C_Hits + C_Years, 
+                           data = KBO_2011[-c(outlier_ri_index),-10])
+summary(KBO_lm_reduced_final)
