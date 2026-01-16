@@ -1,1 +1,146 @@
+###Part 1
+
+
+##Step1. Data collection
+
+library(ISLR)
+data("Smarket")
+
+##Step2. Data preparation and exploration
+
+str(Smarket)
+summary(Smarket)
+
+library(mice)
+md.pattern(Smarket) #No NA values
+
+R <- cor(Smarket[,-9])
+library(corrplot)
+corrplot(corr = R, 
+         method = "number", 
+         type = "upper", 
+         number.digits = 10, 
+         diag = FALSE, 
+         tl.col = "black", 
+         addgrid.col = "lightgray", # 격자 추가
+         number.font = 2)
+         
+
+corrplot(corr = R, 
+         method = 'ellipse', 
+         type = "upper", 
+         number.digits = 3,
+         diag = FALSE,
+         addCoef.col = "black", 
+         tl.srt = 45,
+         tl.col = "black")
+
+
+##Step3. Train Models
+
+
+glm_Smarket <- glm(formula = Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 +Volume, 
+                   family = binomial, 
+                   data = Smarket)
+
+
+summary(glm_Smarket)
+
+attach(Smarket)
+contrasts(Direction) #Down:0, Up: 1
+
+glm_Smarket_prob <- fitted(glm_Smarket) 
+pred_glm_Smarket <- ifelse(glm_Smarket_prob > 0.5, "Up", "Down")
+
+table(Smarket$Direction, pred_glm_Smarket, 
+      dnn = c("actual", "pred"))
+mean(Smarket$Direction == pred_glm_Smarket)
+
+n <- nrow(Smarket)
+set.seed(1234)
+index_train <- sample(1:n, size = n*0.7, replace = FALSE)
+
+train_data <- Smarket[index_train,]
+test_data <- Smarket[-index_train,]
+
+
+##Step4. Evaluate Models
+
+
+model_train <- glm(formula = Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 +Volume, 
+                 family = binomial, 
+                 data = train_data)
+summary(model_train)
+
+model_test <- predict(model_train, newdata = test_data, type = "response")
+mean(test_data$Direction == ifelse(model_test > 0.5,"Up", "Down")) #0.5013333
+
+pchisq(q = model_train$null.deviance - model_train$deviance, 
+       df = model_train$df.null - model_train$df.residual, 
+       lower.tail = FALSE)#Not significant
+
+
+
+##Step5. Improve Models
+
+
+result_chisq <- data.frame()
+result_mean <- data.frame()
+for(i in 1:100) {
+  index_train <- sample(1:n, size = n*0.7, replace = FALSE)
+  
+  train_data <- Smarket[index_train,]
+  test_data <- Smarket[-index_train,]
+  
+  
+  #1
+  model_train <- glm(formula = Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 +Volume, 
+                     family = binomial, 
+                     data = train_data)
+  
+  result_chisq[i,1] <- pchisq(q = model_train$null.deviance - model_train$deviance, 
+                         df = model_train$df.null - model_train$df.residual, 
+                         lower.tail = FALSE)
+  
+  model_test <- predict(model_train, newdata = test_data, type = "response")
+  result_mean[i,1] <- mean(test_data$Direction == ifelse(model_test > 0.5,"Up", "Down"))
+
+  
+  #2
+  model_train.2 <- glm(formula = Direction ~ Lag1 + Volume, 
+                       family = binomial,
+                       data = train_data)
+  
+  result_chisq[i,2] <- pchisq(q = model_train.2$null.deviance - model_train.2$deviance, 
+                         df = model_train.2$df.null - model_train.2$df.residual, 
+                         lower.tail = FALSE)
+  
+  model_test.2 <- predict(model_train.2, newdata = test_data, type = "response")
+  result_mean[i,2] <- mean(test_data$Direction == ifelse(model_test.2 > 0.5,"Up", "Down"))
+  
+  
+  #3
+  model_train.3 <- glm(formula = Direction ~ Lag1, 
+                       family = binomial,
+                       data = train_data)
+  
+  result_chisq[i,3] <-  pchisq(q = model_train.3$null.deviance - model_train.3$deviance, 
+                          df = model_train.3$df.null - model_train.3$df.residual, 
+                          lower.tail = FALSE)
+  
+  model_test.3 <- predict(model_train.3, newdata = test_data, type = "response")
+  result_mean[i,3] <- mean(test_data$Direction == ifelse(model_test.3 > 0.5,"Up", "Down"))
+  
+}
+result_df <- data.frame(chisq_p.value = sapply(result_chisq,mean), 
+                        accuracy = sapply(result_mean,mean))
+rownames(result_df) <- c("Lag1~5 & volume", 
+                         "Lag1 & volume",
+                         "Lag1")
+result_df
+
+
+
+###Part 2
+
 
