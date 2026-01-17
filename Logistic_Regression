@@ -144,3 +144,219 @@ result_df
 ###Part 2
 
 
+
+##Step1. Data collection
+
+
+library(modeldata)
+data("mlc_churn")
+
+
+##Step2. Data preparation and exploration
+
+
+churn <- mlc_churn
+str(churn)
+
+library(mice)
+md.pattern(churn) #No NA values
+
+summary(churn)
+
+library(tidyverse)
+glimpse(churn)
+
+churn <- churn[,-c(1,3)] 
+churn$churn <- ifelse(churn$churn == "no", 1,2) %>% 
+  factor(labels = c("no", "yes"))
+levels(churn$churn)
+
+
+n <- nrow(churn)
+set.seed(1234)
+index_train <- sample(x = 1:n, size = n*(2/3), replace = FALSE)
+
+train_data <- churn[index_train,]
+test_data <- churn[-index_train,]
+
+table(train_data$churn) %>% 
+  prop.table()
+table(test_data$churn) %>% 
+  prop.table()
+
+
+
+##Step3. Train Models
+
+
+model_logistic <- glm(churn ~ ., 
+                      data = churn.train, 
+                      family = binomial(link = "logit"))
+
+
+
+
+##Step4. Evaluate Models
+
+
+
+#Significance Test
+summary(model_logistic)
+deviance <- model_logistic$null.deviance - model_logistic$deviance
+df <- model_logistic$df.null - model_logistic$df.residual
+pchisq(q = deviance, df = df, lower.tail = FALSE) #Significance
+
+#R-squared
+(model_logistic$null.deviance - model_logistic$deviance)/model_logistic$null.deviance #0.2173697
+
+coef(model_logistic) %>% 
+  exp()
+
+pred_logistic_prob <- predict(model_logistic, 
+                              newdata = test_data,
+                              type = "response") 
+
+pred_logistic_type <- ifelse(pred_logistic > 0.5, "yes", "no") %>% 
+  factor()
+
+table(test_data$churn, pred_logistic_type, 
+      dnn = c("Actual", "Predicted"))
+
+mean(test_data$churn == pred_logistic_type) #0.8662268
+
+
+##Step5. Improve Models
+
+
+#stepwise
+model_logistic_step <- step(model_logistic)
+summary(model_logistic_step )
+
+pred_logistic_prob.2 <- predict(model_logistic_step, 
+                              newdata = test_data,
+                              type = "response") 
+pred_logistic_type.2 <- ifelse(pred_logistic_prob.2 > 0.5, "yes", "no") %>% 
+  factor()
+table(test_data$churn, pred_logistic_type.2, 
+      dnn = c("Actual", "Predicted"))
+mean(test_data$churn == pred_logistic_type.2) #0.8680264
+
+
+length(coef(model_logistic)) #18
+length(coef(model_logistic_step)) #10
+
+
+model_logistic_step$deviance / model_logistic_step$df.residual
+
+
+names(coef(model_logistic_step)[-1])
+
+fit_binomial <- glm(churn ~ international_plan +
+                      voice_mail_plan +
+                      number_vmail_messages +
+                      total_day_charge +
+                      total_eve_minutes +
+                      total_night_charge + 
+                      total_intl_calls + 
+                      total_intl_charge +   
+                      number_customer_service_calls, 
+                    family = binomial(), 
+                    data = train_data)
+
+fit_quasibinomial <- glm(churn ~ international_plan +
+                      voice_mail_plan +
+                      number_vmail_messages +
+                      total_day_charge +
+                      total_eve_minutes +
+                      total_night_charge + 
+                      total_intl_calls + 
+                      total_intl_charge +   
+                      number_customer_service_calls, 
+                    family = quasibinomial(), 
+                    data = train_data)
+
+summary(fit_quasibinomial)
+dispersion <- summary(fit_quasibinomial)$dispersion #dispersion은 비율(Ratio)이고, 카이제곱 분포는 합계(Sum)를 다루므로 df를 곱해 스케일을 맞춰
+
+pchisq(q = dispersion * fit_quasibinomial$df.residual,
+       df = fit_quasibinomial$df.residual, 
+       lower.tail = FALSE) #0.7778502
+
+
+#penaty logistic regression
+
+X <- model.matrix(fit_binomial)[,-1]
+y <- ifelse(train_data$churn == "no", 0, 1)
+
+library(glmnet)
+set.seed(1234)
+churn_lasso <- cv.glmnet(x = X, y = y, family = "binomial", alpha = 1) #Lasso
+churn_ridge <- cv.glmnet(x = X, y = y, family = "binomial", alpha = 0) #Ridge
+
+coef(churn_lasso)
+
+model_logistic_step_lasso <- glm(churn ~ international_plan +
+                                   voice_mail_plan +
+                                   total_day_charge +
+                                   total_eve_minutes +
+                                   total_night_charge + 
+                                   total_intl_calls + 
+                                   number_customer_service_calls, 
+                                 family = binomial(), 
+                                 data = train_data)
+
+pred_logistic_prob.3 <- predict(model_logistic_step_lasso, 
+                                newdata = test_data,
+                                type = "response") 
+pred_logistic_type.3 <- ifelse(pred_logistic_prob.3 > 0.5, "yes", "no") %>% 
+  factor()
+
+summary(model_logistic_step_lasso)
+table(test_data$churn, pred_logistic_type.3, 
+      dnn = c("Actual", "Predicted"))
+mean(test_data$churn == pred_logistic_type.3) #0.8632274
+
+
+logistic <- mean(test_data$churn == pred_logistic_type)
+logistic_step <- mean(test_data$churn == pred_logistic_type.2)
+logistic_step_lasso <- mean(test_data$churn == pred_logistic_type.3) 
+variables <- c(length(coef(model_logistic)), 
+               length(coef(model_logistic_step)), 
+               length(coef(model_logistic_step_lasso)))
+
+result_summary <- data.frame(
+  models = c("logistic", "logistic_step", "logistic_step_lasso"), 
+  accuracy = c(logistic, logistic_step, logistic_step_lasso),
+  variables = variables
+)               
+result_summary$models <- factor(result_summary$models, 
+                                levels = c("logistic", "logistic_step", "logistic_step_lasso"))
+
+
+library(ggplot2)
+
+ggplot(data = result_summary, 
+       mapping = aes(x = models, y = accuracy, fill = models)) + 
+  geom_col() +
+  scale_fill_manual(values = c("logistic" = "#E8F5E9", 
+                               "logistic_step" = "#66BB6A", 
+                               "logistic_step_lasso" = "#2E7D32")) +
+  geom_text(aes(label = round(accuracy, 3)), 
+            vjust = -0.5, hjust = 1.1, fontface = "bold") + 
+  geom_text(aes(label = paste0(" (", variables, ")")), 
+            vjust = -0.5, hjust = -0.1, fontface = "bold", color = "red") + 
+  labs(title = "Model Accuracy Comparison",
+       subtitle = "Accuracy in Black, (Variables) in Red",
+       x = "",
+       y = "Accuracy(%)") +
+  theme_minimal() +
+  coord_cartesian(ylim = c(0, max(result_summary$accuracy) * 1.1)) +
+  theme(plot.title = element_text(face = "bold", size = 14)) +
+  theme(plot.title = element_text(face = "bold", size = 16),
+        axis.text.x = element_text(face = "bold.italic", size = 12,, color = "black"),
+        axis.title.y = element_text(size = 11)) +
+  guides(fill = "none")
+
+
+
+
