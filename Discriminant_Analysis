@@ -1,1 +1,100 @@
+##Step1. Data collection
 
+
+library(ISLR)
+data("Smarket")
+
+
+##Step2. Data preparation and exploration
+
+
+library(tidyverse)
+
+str(Smarket)
+summary(Smarket)
+
+
+##Step3. Train Models
+
+
+n <- nrow(Smarket)
+set.seed(1234)
+index_train <- sample(1:n, size = n*0.7, replace = FALSE)
+
+train_data <- Smarket[index_train,]
+test_data <- Smarket[-index_train,]
+
+library(MASS)
+model_lda <- lda(Direction ~ Lag1 + Lag2, 
+                 data = train_data)
+model_lda
+
+
+##Step4. Evaluate Models
+
+
+pred_lda <- predict(model_lda, newdata = test_data)
+
+mean(pred_lda$class == test_data$Direction) #0.52
+table(test_data$Direction,pred_lda$class,
+      dnn = c("Actual", "Predicted"))
+
+pred_lda$posterior
+
+pred_lda$posterior[,1] %>% 
+  summary() #down
+pred_lda$posterior[,2] %>% 
+  summary() #up
+
+
+#normality Test
+normality <- Smarket[,c(2:8)] %>% 
+  map(~ shapiro.test(.x)) %>%
+  map_dbl("p.value")
+normality #Non-normality was observed in all explanatory variables
+
+
+
+##Step5. Improve Models
+
+
+#qda
+model_qda <- qda(Direction ~ Lag1 + Lag2, 
+                 data = train_data)
+model_qda
+
+pred_qda <- predict(model_qda, newdata = test_data)
+mean(pred_qda$class == test_data$Direction) #0.4986667
+table(test_data$Direction,pred_qda$class,
+      dnn = c("Actual", "Predicted"))
+
+pred_qda$posterior[,1] %>% 
+  summary() #down
+pred_qda$posterior[,2] %>% 
+  summary() #up
+
+
+#knn
+library(class)
+set.seed(1234)
+pred_knn <- knn(train = train_data[,c("Lag1","Lag2")], 
+                test = test_data[,c("Lag1","Lag2")], 
+                cl = train_data[, "Direction"], k = 3)
+
+mean(pred_knn == test_data$Direction) #0.4666667
+table(test_data$Direction,pred_knn,
+      dnn = c("Actual", "Predicted"))
+
+
+k_max <- floor(sqrt(nrow(train_data)))
+k <- seq(1,k_max, by = 2);k
+result_knn <- c()
+for(i in 1:length(k)) {
+  set.seed(1234)
+  pred_knn <- knn(train = train_data[,c("Lag1","Lag2")], 
+                  test = test_data[,c("Lag1","Lag2")], 
+                  cl = train_data[, "Direction"], k = k[i])
+  result_knn[i] <- mean(pred_knn == test_data$Direction) 
+}
+
+plot(k,result_knn)
