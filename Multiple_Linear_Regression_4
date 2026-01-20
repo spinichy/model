@@ -1,1 +1,137 @@
+###Step1. #Data collection
 
+
+library(tidyverse)
+library(regbook)
+data("KBO1")
+
+
+##Step2. Data processing and exploration
+
+
+colnames(KBO_2011) <- c("Salary", "Hit", "HR", "RBI", "Runs", "BB", 
+                        "C_Hits","C_Years", "Team", "Player" )
+
+
+##Step3. Train model
+
+
+#reduced model
+KBO_lm_reduced <- lm(formula = Salary ~ Hit + HR + BB + C_Hits, data = KBO_2011[,-10])
+
+#Final model
+KBO_lm_final <- lm(formula = Salary ~ HR + C_Hits, data = KBO_2011[,-10])
+
+
+##Step4. Evaluate model
+
+
+library(leaps)
+KBO_lm_reduced_regs <- regsubsets(x = Salary ~ Hit + HR + BB + C_Hits, data = KBO_2011[,-10])
+KBO_lm_reduced_regs
+summary(KBO_lm_reduced_regs)
+KBO_lm_reduced_regs_summ <- summary(KBO_lm_reduced_regs)
+
+#AIC calculation
+n <- nrow(KBO_2011)
+res.sum <- summary(KBO_lm_reduced_regs) #each row(model, number of variables(incl. intercept)
+k <- rowSums(res.sum$which)
+AIC <- res.sum$bic - log(n) * k + 2 * k
+AIC
+
+
+#evaluation table
+n_var <- length(coef(KBO_lm_reduced))-1
+evaluation_table <- data.frame(
+  rsq =  KBO_lm_reduced_regs_summ$rsq ,
+  adjr2 = KBO_lm_reduced_regs_summ$adjr2,
+  rss = KBO_lm_reduced_regs_summ$rss,
+  cp = KBO_lm_reduced_regs_summ$cp,
+  bic = KBO_lm_reduced_regs_summ$bic,
+  aic = AIC
+)
+
+
+#visualization
+library(ggplot2)
+
+evaluation_long <- evaluation_table %>%
+  mutate(n_vars = 1:n()) %>%
+  pivot_longer(cols = -n_vars, names_to = "metric", values_to = "value") %>%
+  mutate(metric = factor(metric, levels = c("rsq", "adjr2", "rss", "cp", "aic", "bic")))
+
+
+best_points <- evaluation_long %>%
+  group_by(metric) %>%
+  filter(
+    (metric %in% c("adjr2", "rsq") & value == max(value)) | 
+      (metric %in% c("aic", "bic", "cp", "rss") & value == min(value))
+  )
+
+
+ggplot(evaluation_long, aes(x = n_vars, y = value)) +
+  geom_line(aes(group = metric), color = "gray60", size = 0.8) +
+  geom_point(size = 2) +
+  geom_point(data = best_points, color = "red", size = 3) +
+  facet_wrap(~ metric, scales = "free_y", nrow = 3, ncol = 2) +
+  theme_bw() +
+  labs(
+    title = "KBO 축소 모델 선택 지표 (Model Selection Metrics)",
+    x = "Number of Variables",
+    y = "Metric Value"
+  ) +
+  theme(strip.background = element_rect(fill = "yellowgreen"),
+        strip.text = element_text(color = "white", face = "bold"))
+
+
+##Step5. Improve model
+
+
+#stepwise
+KBO_lm_reduced.2 <- lm(formula = Salary ~  HR + BB + C_Hits, data = KBO_2011[,-10])
+step_wise <- step(object = KBO_lm_reduced.2, direction = "both")
+step_forward <- step(object = KBO_lm_reduced.2, direction = "forward")
+step_backward <- step(object = KBO_lm_reduced.2, direction = "backward")
+
+step_wise
+step_forward
+step_backward 
+
+
+#PRESS
+calc_press <- function(model) {
+  pr <- residuals(model) / (1 - hatvalues(model))
+  return(sum(pr^2))
+}
+
+var_3 <- calc_press(KBO_lm_reduced.2)
+var_2 <- calc_press(KBO_lm_final)
+
+library(ggplot2)
+
+press_df <- data.frame(
+  Model = c("2-Variable\n(HR, C_Hits)", "3-Variable\n(HR, BB, C_Hits)"),
+  PRESS_Value = c(var_2, var_3)
+)
+
+press_df$Color_Group <- ifelse(press_df$PRESS_Value == min(press_df$PRESS_Value), "Best", "Other")
+
+
+ggplot(press_df, aes(x = Model, y = PRESS_Value, fill = Color_Group)) +
+  geom_bar(stat = "identity", width = 0.4) +
+  geom_text(aes(label = format(round(PRESS_Value, 0), big.mark = ",")), 
+            vjust = -0.5, size = 5, fontface = "bold") +
+  scale_fill_manual(values = c("Best" = "#006400", "Other" = "#90EE90")) +
+  coord_cartesian(ylim = c(min(press_df$PRESS_Value) * 0.9, max(press_df$PRESS_Value) * 1.05)) +
+  theme_minimal() +
+  labs(
+    title = "Model Prediction Accuracy (PRESS)",
+    subtitle = "Dark Green indicates the superior model with lower prediction error",
+    x = "",
+    y = "PRESS Value"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 16),
+    axis.text.x = element_text(size = 12, face = "bold")
+  ) 
