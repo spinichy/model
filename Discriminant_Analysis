@@ -86,7 +86,7 @@ table(test_data$Direction,pred_knn,
       dnn = c("Actual", "Predicted"))
 
 
-k_max <- floor(sqrt(nrow(train_data)))
+k_max <- floor(sqrt(nrow(train_data)))*2
 k <- seq(1,k_max, by = 2);k
 result_knn <- c()
 for(i in 1:length(k)) {
@@ -97,4 +97,76 @@ for(i in 1:length(k)) {
   result_knn[i] <- mean(pred_knn == test_data$Direction) 
 }
 
-plot(k,result_knn)
+library(ggplot2)
+
+knn_df <- data.frame(k = k, accuracy = result_knn)
+knn_df$is_best <- knn_df$accuracy == max(knn_df$accuracy)
+
+ggplot(knn_df, aes(x = k, y = accuracy)) +
+  geom_line(color = "black", linewidth = 0.8) + 
+  geom_point(aes(color = is_best), size = 2.5) +
+  geom_text(data = subset(knn_df, is_best == TRUE), 
+            aes(label = paste0("(", round(accuracy, 3), ", k = ", k, ")")), 
+            hjust = -0.2,     
+            vjust = 0.5,    
+            color = "red", 
+            fontface = "bold") +
+  scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
+  scale_y_continuous(limits = c(0.44, 0.6), 
+                     breaks = seq(0.4, 0.6, by = 0.02)) +
+  scale_x_continuous(breaks = k) +
+  labs(title = "KNN Accuracy Analysis",
+       x = "Number of Neighbors (k)",
+       y = "Test Accuracy") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+set.seed(1234)
+pred_knn <- knn(train = train_data[,c("Lag1","Lag2")], 
+                test = test_data[,c("Lag1","Lag2")], 
+                cl = train_data[, "Direction"], k = 29)
+
+mean(test_data$Direction == pred_knn)
+table(test_data$Direction,pred_knn,
+      dnn = c("Actual", "Predicted"))
+
+
+#ANN (so many many time spending)
+library(neuralnet)
+
+k_max <- floor(sqrt(nrow(train_data)))*2
+k <- seq(1,k_max, by = 2);k
+
+result_ANN <- c()
+for(i in 1:length(k)) {
+  set.seed(1234) 
+
+  model_result <- tryCatch({
+    
+    model_ANN <- neuralnet(formula = (Direction == "Up") ~ Lag1 + Lag2, 
+                           data = train_data, 
+                           hidden = c(k[i]), # 1-layer, k nodes
+                           act.fct = relu,
+                           linear.output = FALSE)
+
+    pred_ANN <- predict(model_ANN, newdata = test_data)
+
+    pred_ANN_class <- ifelse(pred_ANN[,1] > 0.5, "Up", "Down")
+    accuracy <- mean(pred_ANN_class == test_data$Direction)
+    accuracy #
+    
+  }, error = function(e) {
+ 
+    cat("Error at k =", k[i], ":", e$message, "\n")
+    return(NULL)
+  })
+  
+  if(!is.null(model_result)) {
+    result_ANN[i] <- model_result
+  } else {
+    result_ANN[i] <- NA 
+  }
+}
+
+mean(x = result_ANN, na.rm = TRUE)
