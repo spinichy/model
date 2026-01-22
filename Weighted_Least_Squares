@@ -1,1 +1,323 @@
+##Step1. Data collection
 
+
+library(readxl)
+data_raw <- read_xlsx(path = "한국인_혈압_참조표준.xlsx")
+korean_bloodpressure <- data_raw
+bp <- korean_bloodpressure
+
+
+##Step2. Data preparation and exploration
+
+
+#data processing
+library(mice)
+md.pattern(bp) #No NA values
+
+str(bp)
+colnames(bp) <- c("No","Region","Gender","Age",
+                  "Systolic_Diastolic",
+                  "HTN_Medication_Inclusion",
+                  "Measurand",
+                  "Measured_Value",
+                  "Expanded_Uncertainty",
+                  "Coverage_Factor",
+                  "Confidence_Level",
+                  "Standard_Deviation",
+                  "Sample_Size",
+                  "1st Percentile",
+                  "5th Percentile",
+                  "10th Percentile",
+                  "25th Percentile",
+                  "50th Percentile",
+                  "75th Percentile",
+                  "90th Percentile",
+                  "95th Percentile",
+                  "99th Percentile")
+
+#as.factor
+library(tidyverse)
+
+region_map <- c(
+  "전국" = "National",
+  "서울" = "Seoul",
+  "부산" = "Busan",
+  "대구" = "Daegu",
+  "인천" = "Incheon",
+  "광주" = "Gwangju",
+  "대전" = "Daejeon",
+  "울산" = "Ulsan",
+  "경기" = "Gyeonggi",
+  "강원" = "Gangwon",
+  "충북" = "Chungbuk",
+  "충남" = "Chungnam",
+  "전북" = "Jeonbuk",
+  "전남" = "Jeonnam",
+  "경북" = "Gyeongbuk",
+  "경남" = "Gyeongnam",
+  "제주" = "Jeju"
+)
+bp$Region <- str_replace_all(bp$Region, region_map)
+
+bp$Gender <- factor(x = bp$Gender, 
+                    levels = c("남성", "여성"), 
+                    labels = c("male", "female"))
+
+bp$Age <- str_remove_all(string = bp$Age, pattern = " 세") %>% 
+  str_replace(string = ., pattern = " 이상", replacement = "_above") %>% 
+  as.factor()
+
+bp$Systolic_Diastolic <- str_replace_all(
+  string = bp$Systolic_Diastolic, 
+  pattern = c("수축기" = "Systolic", "이완기" = "Diastolic")) %>% 
+  as.factor()
+
+bp$HTN_Medication_Inclusion <- str_replace_all(
+  string = bp$HTN_Medication_Inclusion, 
+  pattern = c("포함" = "Inclusion", "제외" = "Exclusion")) %>% 
+  as.factor()
+
+
+#specific data
+bp.2 <- bp[,c(1,2,3,4,5,6,8)]
+colnames(bp.2) <- c("no", "area", "sex", "age", "BP_Type","HTN_Med","value")
+str(bp.2)
+
+
+#data exploration
+
+bp_control <- bp.2 %>% 
+  filter(area == "National", 
+         HTN_Med == "Exclusion")
+
+library(ggplot2)
+
+ggplot(data = bp_control, 
+       mapping = aes(x = age, y = value, color = sex)) + 
+  geom_point(alpha = 0.7) + 
+  facet_wrap(~ BP_Type, nrow = 1) + 
+  scale_color_manual(values = c("male" = "#1ABC9C", "female" = "#FF1493")) +
+  labs(title = "Blood Pressure Analysis",
+       x = "Age Group",
+       y = "Value",
+       color = NULL) + 
+  theme_minimal() + 
+  theme(   
+    strip.text = element_text(size = 14, face = "bold", color = "black"),       
+    strip.background = element_rect(fill = "gray90", color = "black", size = 1),     
+    panel.border = element_rect(color = "black", fill = NA, size = 1),    
+
+    axis.text.x = element_text(angle = 45, hjust = 1),   
+
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+#change age to mean_age
+age_low <- str_sub(string = bp_control$age, start = 1, end = 2) %>% 
+  as.numeric()
+age_high <- str_sub(string = bp_control$age, start = 4, end = 5)
+age_high[age_high == "ab"] <- 75
+age_high <- age_high %>% 
+  as.numeric()
+
+age_mean <- (age_low + age_high)/2
+
+bp_control <- bp_control %>% 
+  mutate(age_group = age,
+         age_mean = age_mean) 
+       
+bp_Systolic <- bp_control %>% 
+  filter(BP_Type == "Systolic")
+
+
+##Step3.Train Model
+
+
+str(bp_Systolic)
+lm_bp <- lm(value ~  sex + age_mean , data = bp_Systolic) 
+
+
+##Step4.Evaluate Model
+
+
+summary(lm_bp)
+levels(bp_Systolic$sex)
+
+#residual analysis
+par(mfrow = c(2,2))
+
+#Heteroscedasticity test
+res_sq_diag <- diag(resid(lm_bp)^2);res_sq_diag 
+inXX <- solve(t(X) %*% X) #same code: vcov(lm_bp)
+HC0 <- inXX %*% ( t(X) %*% res_sq_diag %*% X ) %*% inXX
+HC0
+'''
+#same code
+
+library(sandwich)
+vcovHC(x = lm_bp, type = "HC0")
+
+'''
+
+vcov(lm_bp)
+HC0
+
+
+bptest(lm_bp)
+
+
+library(lmtest)
+coeftest(x = lm_bp, vcov. = HC0)
+
+
+#normality test
+shapiro.test(X[,-1])
+
+
+#external sudentized residual
+X <- model.matrix(lm_bp)
+n <- nrow(X);n
+p <- ncol(X)
+external_residual <- rstudent(lm_bp)
+re <- external_residual
+
+#t statistic
+p_value_t <- 2*pt(q = abs(re), df = n-p-1, lower.tail = FALSE) #
+
+re_df <- data.frame(
+  re = re, 
+  p_value = p_value_t 
+) %>% 
+  mutate(outlier = ifelse(p_value < 0.05, "outlier", "")) %>% 
+  mutate(id = row_number())
+
+ggplot(data = re_df, 
+       mapping = aes(x = id, y = p_value, color = outlier)) + 
+  geom_point() + 
+  geom_text(data = filter(re_df, outlier == "outlier"), 
+            aes(label = id), 
+            vjust = -1,    
+            show.legend = FALSE) +
+  scale_color_manual(values = c("outlier" = "red"),
+                     breaks = "outlier") + 
+  labs(x = "Index", y = "P-value", color = NULL) + 
+  theme_bw()
+
+
+index_outlier <- c(52,53,54)
+
+bp_Systolic[index_outlier,]
+bp_Systolic %>% 
+  filter(sex == "female", 
+         age_mean >= 70)
+
+
+##Step5.Improve Model
+
+
+#Weighted Least Squares
+agg <- aggregate(x = value ~ age_mean, data = bp_Systolic, FUN = sd)
+sdfit <- lm(value ~ age_mean, data = agg)
+s <- predict(sdfit, newdata = bp_Systolic)
+w <- 1/(s^2)
+
+lm_bp_WLS <- lm(value ~  sex + age_mean , 
+                data = bp_Systolic, weights = w)
+summary(lm_bp_WLS)
+
+#residual analysis
+par(mfrow = c(2,2))
+plot(lm_bp_WLS)
+
+library(lmtest)
+bptest(lm_bp_WLS)
+
+
+#IRLS, Iteratively Reweighted Least Squares - 1
+
+current_model <- lm(value ~ sex + age_mean, data = bp_Systolic)
+w_old <- rep(1, nrow(bp_Systolic)) #weights all 1
+
+max_iter <- 100    
+tolerance <- 1e-6 
+
+for (i in 1:max_iter) {
+  
+  log_res_sq <- log(resid(current_model)^2)
+  var_fit <- lm(log_res_sq ~ sex + age_mean, data = bp_Systolic)
+  
+  w_new <- 1 / exp(predict(var_fit)) #The residuals tend to increase as the fitted values increase
+  
+  diff <- sum(abs(w_new - w_old))
+  cat(sprintf("Iteration %d: Weight Difference = %.8f\n", i, diff))
+  
+  if (diff < tolerance) {
+    cat("Converged!")
+    break
+  }
+  
+  w_old <- w_new
+  current_model <- lm(value ~ sex + age_mean, 
+                      data = bp_Systolic, weights = w_new)
+}
+
+lm_bp_IRLS <- current_model
+summary(lm_bp_IRLS)
+
+par(mfrow = c(2, 2))
+plot(lm_bp_IRLS)
+
+
+#IRLS, Iteratively Reweighted Least Squares - 2
+
+
+current_model <- lm(value ~ sex + age_mean, data = bp_Systolic)
+w_old <- rep(1, nrow(bp_Systolic)) #weights all 1
+
+max_iter <- 200    
+tolerance <- 1e-6 
+
+for (i in 1:max_iter) {
+  
+  log_res_sq <- log(resid(current_model)^2)
+  var_fit <- lm(log_res_sq ~ sex + age_mean + I(age_mean^2), data = bp_Systolic)
+  
+  w_new <- 1 / exp(predict(var_fit)) #The residuals tend to increase as the fitted values increase
+  
+  diff <- sum(abs(w_new - w_old))
+  cat(sprintf("Iteration %d: Weight Difference = %.8f\n", i, diff))
+  
+  if (diff < tolerance) {
+    cat("Converged!")
+    break
+  }
+  
+  w_old <- w_new
+  current_model <- lm(value ~ sex + age_mean, 
+                      data = bp_Systolic, weights = w_new)
+}
+
+lm_bp_IRLS <- current_model
+summary(lm_bp_IRLS)
+
+par(mfrow = c(2, 2))
+plot(lm_bp_IRLS)
+
+
+#interaction
+
+
+lm_ols <- lm(value ~ sex * (age_mean + I(age_mean^2)), data = bp_Systolic)
+log_res_sq <- log(resid(lm_ols)^2)
+var_model <- lm(log_res_sq ~ sex * (age_mean + I(age_mean^2)), data = bp_Systolic)
+var_pred <- exp(predict(var_model))
+w_final <- 1 / var_pred
+
+lm_bp_square_interaction <- lm(value ~ sex * (age_mean + I(age_mean^2)),
+                               data = bp_Systolic,
+                               weights = w_final)
+
+summary(lm_bp_square)
+plot(lm_bp_square)
