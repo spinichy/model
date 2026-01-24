@@ -1,1 +1,374 @@
+##Step1. Data collection
 
+
+library(MASS)
+data("Boston")
+?Boston
+
+
+##Step2. Data preparation and exploration
+
+
+library(tidyverse)
+
+str(Boston)
+summary(Boston)
+
+
+R <- cor(Boston)
+
+# 3. corrplot 그리기
+windows()
+library(corrplot)
+corrplot(corr = R, 
+         method = "ellipse", 
+         type = "lower", 
+         addCoef.col = "black", 
+         number.cex = 0.7, 
+         diag = FALSE,
+         title = "Correlation of Housing Value Variables in Boston Suburbs (1970)",
+         mar = c(0, 0, 2, 0))
+
+draw_dashed_circle <- function(x, y, r) {
+  ang <- seq(0, 2*pi, length.out = 100)
+  lines(x + r*cos(ang), y + r*sin(ang), 
+        col = "red", 
+        lty = 2,      
+        lwd = 2)
+}
+
+draw_dashed_circle(6, 9, 0.5)  
+draw_dashed_circle(13, 2, 0.7)  
+
+library(caret)
+set.seed(1234)
+index_train <- createDataPartition(y = Boston$medv, 
+                                  times = 1, 
+                                  p = 0.7, 
+                                  list = FALSE)
+
+#Data Splitting
+Boston_train <- Boston[index_train,]
+Boston_test <- Boston[-index_train,]
+
+
+##Step3. Train Models
+
+
+X <- model.matrix(medv ~ ., Boston_train)[,-1] #remove intercept 
+y <- Boston_train$medv
+
+
+#ridge
+library(glmnet)
+ridge <- glmnet(x = X, y = y, 
+                family = "gaussian", #pdf of response variable 
+                alpha = 0)
+ridge
+coef(ridge)
+
+#lasso
+library(glmnet)
+lasso <- glmnet(x = X, y = y, 
+                family = "gaussian", #pdf of response variable 
+                alpha = 1)
+lasso
+coef(lasso)
+
+
+#elasticnet
+library(glmnet)
+elasticnet <- glmnet(x = X, y = y, 
+                family = "gaussian", #pdf of response variable 
+                alpha = 0.5)
+elasticnet
+coef(elasticnet)
+
+
+##Step4. Evaluate Models
+
+
+#OLS (baseline)
+ols_model <- lm(medv ~ ., data = Boston_train)
+ols_pred <- predict(ols_model, newdata = Boston_test)
+ols_rmse <- sqrt(mean((Boston_test$medv - ols_pred)^2))
+
+
+#ridge_test
+X_test <- model.matrix(medv ~ ., Boston_test)[,-1]
+ridge_pred <- predict(ridge, newx = X_test, s = 0.1) # s는 특정 람다 값
+actual <- Boston_test$medv
+
+mse <- mean((actual - ridge_pred)^2)
+rmse <- sqrt(mse)
+
+cat("OLS RMSE:", ols_rmse, "\nRidge RMSE:", rmse)
+
+
+#lasso_test
+X_test <- model.matrix(medv ~ ., Boston_test)[,-1]
+lasso_pred <- predict(lasso, newx = X_test, s = 0.1) # s는 특정 람다 값
+actual <- Boston_test$medv
+
+mse_lasso <- mean((actual - lasso_pred)^2)
+rmse_lasso <- sqrt(mse_lasso)
+
+cat("OLS RMSE:", ols_rmse, 
+    "\nRidge RMSE:", rmse, 
+    "\nlasso RMSE:", rmse_lasso)
+
+
+#elasticnet_test
+X_test <- model.matrix(medv ~ ., Boston_test)[,-1]
+elasticnet_pred <- predict(elasticnet, newx = X_test, s = 0.1) # s는 특정 람다 값
+actual <- Boston_test$medv
+
+mse_elasticnet <- mean((actual - elasticnet_pred)^2)
+rmse_elasticnet <- sqrt(mse_lasso)
+
+cat("OLS RMSE:", ols_rmse, 
+    "\nRidge RMSE:", rmse, 
+    "\nlasso RMSE:", rmse_lasso, 
+    "\nelasticnet RMSE:", rmse_elasticnet)
+
+
+##Step5. Improve Models
+
+
+#ridge_improve: k-fold-validation (default 9-fold:train, 1-fold: test)
+library(glmnet)
+set.seed(1234) 
+ridge_cv <- cv.glmnet(x = X, y = y, 
+                      family = "gaussian", alpha = 0, 
+                      nfolds = 10)
+
+#visualization - ridge
+windows()
+par(mar = c(5, 5, 6, 2))
+plot(ridge_cv, xaxt = "n", xlab = "")
+
+actual_ticks <- c(0.1, 1, 10, 100, 1000)
+
+axis(side = 1, 
+     at = log(actual_ticks), 
+     labels = actual_ticks) 
+
+mtext("Lambda (Actual Scale)", side = 1, line = 3)
+
+l_min <- ridge_cv$lambda.min
+l_1se <- ridge_cv$lambda.1se
+
+text(x = log(l_min), y = 55, 
+     labels = paste("Min Lambda:\n", round(l_min, 4)), 
+     col = "blue", font = 2, cex = 1.2)
+
+text(x = log(l_1se), y = 75, 
+     labels = paste("1se Lambda:\n", round(l_1se, 4)), 
+     col = "darkgreen", font = 2, cex = 1.2)
+
+
+ridge_improve <- glmnet(x = X, y = y, 
+                        family = "gaussian", alpha = 0, 
+                        lambda = ridge_cv$lambda.min)
+
+coef(ridge_improve)
+
+ridge_pred.2 <- predict(ridge_improve, newx = X_test)
+mse.2 <- mean((actual - ridge_pred.2)^2)
+rmse.2 <- sqrt(mse.2)
+
+cat("OLS RMSE:", ols_rmse, "\nRidge RMSE:", rmse, "\nRidge.2 RMSE:", rmse.2)
+
+
+
+#lasso_improve: k-fold-validation (default 9-fold:train, 1-fold: test)
+library(glmnet)
+set.seed(1234) 
+lasso_cv <- cv.glmnet(x = X, y = y, 
+                      family = "gaussian", alpha = 1, 
+                      nfolds = 10)
+
+#visualization - lasso
+windows()
+par(mar = c(5, 5, 6, 2))
+plot(lasso_cv, xaxt = "n", xlab = "")
+
+actual_ticks <- c(0.1, 1, 10, 100, 1000)
+
+axis(side = 1, 
+     at = log(actual_ticks), 
+     labels = actual_ticks) 
+
+mtext("Lambda (Actual Scale)", side = 1, line = 3)
+
+l_min <- lasso_cv$lambda.min
+l_1se <- lasso_cv$lambda.1se
+
+text(x = log(l_min), y = 55, 
+     labels = paste("Min Lambda:\n", round(l_min, 4)), 
+     col = "blue", font = 2, cex = 1.2)
+
+text(x = log(l_1se), y = 75, 
+     labels = paste("1se Lambda:\n", round(l_1se, 4)), 
+     col = "darkgreen", font = 2, cex = 1.2)
+
+
+lasso_improve <- glmnet(x = X, y = y, 
+                        family = "gaussian", alpha = 1, 
+                        lambda = lasso_cv$lambda.1se)
+
+coef(lasso_improve)
+
+lasso_pred.2 <- predict(lasso_improve, newx = X_test)
+mse.2_lasso <- mean((actual - lasso_pred.2)^2)
+rmse.2_lasso <- sqrt(mse.2_lasso)
+
+
+cbind(coef(ridge_improve), coef(lasso_improve))
+
+
+
+#elasticnet_improve: k-fold-validation (default 9-fold:train, 1-fold: test)
+library(glmnet)
+set.seed(1234) 
+library(caret)
+elasticnet_cv <- caret::train(form = medv ~ ., 
+                              data = Boston_train, 
+                              method = "glmnet", 
+                              trControl = trainControl(method = "cv", number = 10), 
+                              tuneLength = 10)
+
+elasticnet_cv$bestTune
+
+elasticnet_df <- elasticnet_cv$results %>% 
+  filter(alpha == 0.1) %>% 
+  select(c("lambda", "RMSE"))
+
+
+#visualization - elasticnet
+best_row <- elasticnet_df[which.min(elasticnet_df$RMSE), ]
+best_lambda <- best_row$lambda
+best_mse <- best_row$RMSE^2  
+
+
+windows()
+par(mar = c(5, 5, 6, 2))
+
+
+plot(x = elasticnet_df$lambda, 
+     y = elasticnet_df$RMSE^2, 
+     xlab = "Lambda (Actual Scale)", 
+     ylab = "Mean-Squared Error (MSE)",
+     main = "Elastic Net: Optimal alpha = 0.1",
+     pch = 1)
+
+
+points(x = best_lambda, y = best_mse, col = "red", pch = 16, cex = 1.2)
+
+
+text_x <- best_lambda + 1.5
+text_y <- best_mse + 5
+
+
+arrows(x0 = text_x - 0.2, y0 = text_y - 1, 
+       x1 = best_lambda, y1 = best_mse, 
+       col = "red", length = 0.1, lwd = 2)
+
+
+text(x = text_x, y = text_y, 
+     labels = paste("Optimal Lambda:", round(best_lambda, 4), 
+                    "\n(Min MSE:", round(best_mse, 4), ")"), 
+     col = "red", font = 2, adj = 0)
+
+
+
+
+elasticnet_alpha <- elasticnet_cv$bestTune[1] %>% 
+  as.numeric()
+elasticnet_lambda <- elasticnet_cv$bestTune[2] %>% 
+  as.numeric()
+
+elasticnet_improve <- glmnet(x = X, y = y, 
+                        family = "gaussian", 
+                        alpha = elasticnet_alpha, 
+                        lambda = elasticnet_lambda)
+
+coef(elasticnet_improve)
+
+elasticnet_pred.2 <- predict(elasticnet_improve, newx = X_test)
+mse.2_elasticnet <- mean((actual - elasticnet_pred.2)^2)
+rmse.2_elasticnet <- sqrt(mse.2_elasticnet)
+
+
+cbind(coef(ridge_improve), 
+      coef(lasso_improve), 
+      coef(elasticnet_improve))
+
+
+#total result
+cat("OLS RMSE:", ols_rmse, 
+    "\nRidge RMSE:", rmse, 
+    "\nRidge.2 RMSE(min lambda):", rmse.2,
+    "\nlasso RMSE:", rmse_lasso, 
+    "\nlasso.2 RMSE(min lambda.1se):", rmse.2_lasso, 
+    "\nelasticnet RMSE:", rmse_elasticnet, 
+    "\nelasticnet.2 RMSE(optimal lambda):", rmse.2_elasticnet)
+
+
+#visualization - total result
+
+
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+
+performance_data <- data.frame(
+  Model = factor(c("OLS", "Ridge (min)", "Lasso (1se)", "Elastic Net (opt)"),
+                 levels = c("OLS", "Ridge (min)", "Lasso (1se)", "Elastic Net (opt)")),
+  RMSE = c(4.4230, 4.3077, 4.4684, 4.3831)
+)
+
+performance_data$bar_color <- c("darkgrey", "#99CC00", "#006600", "#CCFF99")
+
+coef_compare <- data.frame(
+  Feature = rep(c("crim", "chas", "nox", "rm", "dis", "ptratio", "lstat"), 2),
+  Coefficient = c(-0.1067, 3.3495, -11.3771, 3.7385, -1.1354, -0.8662, -0.5351,
+                  -0.0160, 2.5636, 0, 3.9881, -0.2665, -0.7135, -0.5737),      
+  Model = c(rep("Ridge", 7), rep("Lasso", 7))
+)
+
+p1 <- ggplot(performance_data, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = round(RMSE, 3)), vjust = -0.5, fontface = "bold", size = 3.5) +
+  scale_fill_manual(values = performance_data$bar_color) + 
+  coord_cartesian(ylim = c(4.0, 4.6)) +
+  labs(title = "Model Performance (RMSE)", x = "", y = "RMSE") +
+  theme_minimal(base_family = "sans")
+
+
+p2 <- ggplot(coef_compare, aes(x = Feature, y = Coefficient, color = Model)) +
+  geom_segment(aes(x = Feature, xend = Feature, y = 0, yend = Coefficient), 
+               position = position_dodge(width = 0.5), size = 1) +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "darkgray") +
+  
+
+  annotate("point", x = "nox", y = -13.2, color = "red", size = 20, shape = 1, stroke = 1.5) + 
+  annotate("text", x = "nox", y = -10.5, label = "Key Variable", color = "red", fontface = "bold", size = 4) +
+  
+  labs(title = "Feature Coefficients: Ridge vs. Lasso", x = "Variables", y = "Coefficient Value") +
+  theme_bw() +
+  scale_color_manual(values = c("Ridge" = "#3366CC", "Lasso" = "#DC3912")) +
+ 
+  coord_cartesian(clip = "off", ylim = c(-12, 4)) 
+
+combined_plot <- gridExtra::arrangeGrob(p1, p2, 
+                                        ncol = 1, 
+                                        heights = c(1, 1.5), 
+                                        top = grid::textGrob("Model Analysis: OLS vs. Ridge vs. Lasso vs. Elastic Net", 
+                                                             gp = grid::gpar(fontsize = 16, fontface = "bold")))
+
+windows(width = 9, height = 11)
+grid::grid.newpage()
+grid::grid.draw(combined_plot)
