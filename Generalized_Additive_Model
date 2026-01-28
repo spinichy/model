@@ -1,1 +1,50 @@
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 1. Generate synthetic data (Signal with abrupt structural changes)
+set.seed(123)
+# Create a piecewise constant signal with different levels
+x <- c(rep(0, 25), rep(10, 25), rep(5, 25), rep(-5, 25)) 
+# Add Gaussian white noise to the signal
+x <- x + rnorm(100) 
+windows()
+plot(x, main="Original Signal with Noise")
+
+# 2. Perform Discrete Wavelet Transform (DWT)
+# filter = "haar": Use the simplest wavelet filter (Haar)
+# n.levels = 3: Decompose the signal into 3 levels of resolution
+wt_result <- dwt(x, filter = "haar", n.levels = 3)
+
+# 3. Visualize the decomposition results
+# Shows Approximation (V) and Detail (W) coefficients
+plot(wt_result)
