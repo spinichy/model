@@ -1,1 +1,244 @@
+##Step1. Data collection
 
+
+data('stackloss')
+
+
+##Step2. Data preparation and exploration
+
+
+str(stackloss)
+summary(stackloss)
+
+plot(stackloss)
+
+R <- cor(stackloss)
+library(corrplot)
+corrplot(corr = R, method = "ellipse")
+
+
+
+##Step3.Train Model
+
+
+model_OLS <- lm(stack.loss ~ ., data = stackloss)
+
+
+##Step4.Evaluate Model
+
+
+#OLS
+summary(model_OLS)
+
+model_OLS_scale <- lm(scale(stack.loss) ~ scale(Air.Flow) + 
+                        scale(Water.Temp) + 
+                        scale(Acid.Conc.), 
+                      data = stackloss)
+summary(model_OLS_scale)
+
+X_scale <- model.matrix(model_OLS_scale)
+R.2 <- cor(X_scale[,-1])
+
+#eigen
+eigen(R.2)$values
+
+#vif
+diag(solve(R.2))
+
+model_OLS.2 <- lm(stack.loss ~ .-Acid.Conc., data = stackloss)
+summary(model_OLS.2)             
+
+
+par(mfrow = c(2,2))
+plot(model_OLS.2)
+
+str(stackloss)
+
+
+##Step5.Improve Model
+
+
+#robust
+library(MASS)
+model_robust.M <- rlm(stack.loss ~ .-Acid.Conc., 
+                      data = stackloss, 
+                      method = "M", 
+                      psi = psi.bisquare)
+
+summary(model_robust.M)
+
+par(mfrow = c(2,2))
+plot(model_robust.M)
+
+model_robust.MM <- rlm(stack.loss ~ .-Acid.Conc., 
+                       data = stackloss, 
+                       method = "MM", 
+                       psi = psi.bisquare)
+
+summary(model_robust.MM)
+
+
+
+fitted_val <- fitted(model_robust.MM)
+res_val <- residuals(model_robust.MM)
+
+par(mfrow = c(1,2))
+plot(fitted_val, res_val, 
+     main="Residuals vs Fitted (Robust MM)",
+     xlab="Fitted values", ylab="Residuals")
+abline(h=0, col="red", lty=2) # 0 기준선 추가
+plot(model_robust.MM$w, 
+     main="Robust Weights by Observation",
+     xlab="Index", ylab="Weight")
+text(model_robust.MM$w, labels=1:21, pos=3, cex=0.7) # 데이터 번호 표시
+
+
+#summary_1 - MSE
+n <- nrow(stackloss)
+result <- data.frame(matrix(NA, nrow = n, ncol = 4))
+colnames(result) <- c("OLS", "OLS_2", "Robust_M", "Robust_MM")
+
+for(i in 1:n) {
+  data_train <- stackloss[-i,]
+  actual <- stackloss[i, "stack.loss"]
+  
+
+  OLS <- lm(stack.loss ~ ., data = data_train)
+  
+  OLS.2 <- lm(stack.loss ~ Air.Flow + Water.Temp, data = data_train)
+  
+  robust.M <- rlm(stack.loss ~ Air.Flow + Water.Temp, 
+                  data = data_train, method = "M", 
+                  psi = psi.bisquare, maxit = 200)
+  
+  robust.MM <- rlm(stack.loss ~ Air.Flow + Water.Temp, 
+                   data = data_train, method = "MM", maxit = 200)
+  
+  pred_OLS <- predict(OLS, newdata = stackloss[i,])
+  pred_OLS.2 <- predict(OLS.2, newdata = stackloss[i,])  
+  pred_robust.M <- predict(robust.M, newdata = stackloss[i,])
+  pred_robust.MM <- predict(robust.MM, newdata = stackloss[i,])
+  
+  result[i,1] <- actual - pred_OLS
+  result[i,2] <- actual - pred_OLS.2
+  result[i,3] <- actual - pred_robust.M
+  result[i,4] <- actual - pred_robust.MM
+}
+
+#print MSE
+colMeans(result^2)
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(gridExtra)
+
+
+result_long <- result %>%
+  mutate(ID = row_number()) %>%
+  pivot_longer(cols = c("OLS", "OLS_2", "Robust_M", "Robust_MM"), 
+               names_to = "Model", 
+               values_to = "Error") %>%
+  mutate(SqError = Error^2) 
+
+p1 <- ggplot(result_long %>% group_by(Model) %>% summarise(MSE = mean(SqError)), 
+             aes(x = reorder(Model, MSE), y = MSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6, show.legend = FALSE) +
+  geom_text(aes(label = round(MSE, 2)), vjust = -0.3) +
+  labs(title = "모델별 평균 제곱 오차 (MSE) 비교",
+       subtitle = "전체 데이터에 대한 평균적인 예측 성능",
+       x = "모델", y = "Mean Squared Error") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Pastel1")
+
+p2 <- ggplot(result_long, aes(x = Model, y = SqError, color = Model)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.5) +
+  geom_jitter(width = 0.2, alpha = 0.6, size = 2) +
+  labs(title = "모델별 오차 제곱의 개별 분포",
+       subtitle = "특정 이상치에 의한 오차 팽창 확인",
+       x = "모델", y = "Squared Error") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_color_brewer(palette = "Set1")
+
+grid.arrange(p1, p2, ncol = 2)
+
+
+
+#summary_2 - MedianSE
+n <- nrow(stackloss)
+result <- data.frame(matrix(NA, nrow = n, ncol = 4))
+colnames(result) <- c("OLS", "OLS_2", "Robust_M", "Robust_MM")
+
+for(i in 1:n) {
+  data_train <- stackloss[-i,]
+  actual <- stackloss[i, "stack.loss"]
+  
+  
+  OLS <- lm(stack.loss ~ ., data = data_train)
+  OLS_2 <- lm(stack.loss ~ Air.Flow + Water.Temp, data = data_train)
+  robust_M <- rlm(stack.loss ~ Air.Flow + Water.Temp, 
+                  data = data_train, method = "M", psi = psi.bisquare, maxit = 200)
+  robust_MM <- rlm(stack.loss ~ Air.Flow + Water.Temp, 
+                   data = data_train, method = "MM", maxit = 200)
+  
+\
+  pred_OLS <- predict(OLS, newdata = stackloss[i,])
+  pred_OLS_2 <- predict(OLS_2, newdata = stackloss[i,])  
+  pred_robust_M <- predict(robust_M, newdata = stackloss[i,])
+  pred_robust_MM <- predict(robust_MM, newdata = stackloss[i,])
+  
+\
+  result[i,1] <- actual - pred_OLS
+  result[i,2] <- actual - pred_OLS_2
+  result[i,3] <- actual - pred_robust_M
+  result[i,4] <- actual - pred_robust_MM
+}
+
+
+MedSE_results <- apply(result^2, 2, median)
+print("Median Squared Error (MedSE) Results:")
+print(MedSE_results)
+
+
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(gridExtra)
+library(ggrepel)
+
+result_long <- result %>%
+  mutate(ID = row_number()) %>%
+  pivot_longer(cols = c("OLS", "OLS_2", "Robust_M", "Robust_MM"), 
+               names_to = "Model", values_to = "Error") %>%
+  mutate(SqError = Error^2) %>%
+  mutate(Model = factor(Model, levels = c("OLS", "OLS_2", "Robust_M", "Robust_MM")))
+
+
+p1 <- ggplot(result_long %>% group_by(Model) %>% summarise(MedSE = median(SqError)), 
+             aes(x = Model, y = MedSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6, show.legend = FALSE, alpha = 0.5, color = "white") +
+  geom_text(aes(label = round(MedSE, 2)), vjust = -0.3, fontface = "bold") +
+  labs(title = "Model Performance: MedSE",
+       subtitle = "Median of Squared Errors (Robust Evaluation)",
+       x = NULL, y = "Median Squared Error (MedSE)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +
+  theme(axis.text.x = element_blank())
+
+
+p2 <- ggplot(result_long, aes(x = Model, y = SqError, color = Model)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.2) +
+  geom_jitter(width = 0.2, alpha = 0.8, size = 2) +
+  geom_text_repel(data = result_long %>% filter(ID %in% c(4, 21)),
+                  aes(label = ID), size = 4, fontface = "bold", color = "black", box.padding = 0.5) +
+  labs(title = "Individual Error Distribution",
+       subtitle = "Identification of Squared Errors by Observation",
+       x = NULL, y = "Individual Squared Error") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.text.x = element_blank())
+
+
+grid.arrange(p1, p2, ncol = 2)
