@@ -1,4 +1,101 @@
+## Step.1 Data collection
+library(ISLR)
+data('Wage')
+wage <- Wage
 
+
+## Step.2 Data preparation
+
+
+wage$region <- NULL # only Middle Atlantic
+wage$year <- as.factor(wage$year) # categorize year
+
+str(wage)
+summary(wage)
+
+
+##visualization - 1
+library(tidyverse)
+library(patchwork)
+
+
+p1 <- ggplot(wage_2003, aes(x = age, y = wage)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  # Adding a smooth line to show the trend
+  geom_smooth(formula = y ~ x, method = "loess", color = "red") +
+  # Title updated to English as requested
+  labs(title = "Relationship between Age and Wage (2003)",
+       subtitle = "Scatter plot with LOESS smoothing line",
+       x = "Age", y = "Wage") +
+  theme_minimal() +
+  theme(
+    # Increasing font sizes by 1.2x to match the categorical plots
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "bold", size = 12),
+    axis.text = element_text(size = 10.5)
+  )
+windows()
+print(p1)
+
+
+##visualization - 2
+wage_2003 <- wage %>% filter(year == "2003")
+
+windows()
+wage_row1 <- wage_2003 %>%
+  select(jobclass, health, health_ins, wage) %>%
+  pivot_longer(cols = -wage, names_to = "variable", values_to = "value") %>%
+  mutate(variable = factor(variable, levels = c("jobclass", "health", "health_ins")))
+
+wage_row2 <- wage_2003 %>%
+  select(education, maritl, race, wage) %>%
+  pivot_longer(cols = -wage, names_to = "variable", values_to = "value") %>%
+  mutate(variable = factor(variable, levels = c("education", "maritl", "race")))
+
+
+p_upper <- ggplot(wage_row1, aes(x = value, y = wage, fill = variable)) +
+  geom_jitter(color = "grey70", alpha = 0.2, width = 0.2) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  scale_fill_manual(values = c("#B2D8D8", "#66B2B2", "#008080")) +
+  facet_wrap(~ variable, scales = "free_x", ncol = 3) +
+  labs(title = "Wage Distribution by Categorical Factors (2003)",
+       subtitle = "Grey dots represent individual observations (data points)",
+       x = NULL, y = NULL) + # Remove individual y-axis label
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10.5), 
+    legend.position = "none",
+    strip.background = element_rect(fill = "black"),
+    strip.text = element_text(color = "white", face = "bold", size = 13.2) #
+  )
+
+
+p_lower <- ggplot(wage_row2, aes(x = value, y = wage, fill = variable)) +
+  geom_jitter(color = "grey70", alpha = 0.2, width = 0.2) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  scale_fill_manual(values = c("#F4C2C2", "#EBB2D0", "#FF9999")) +
+  facet_wrap(~ variable, scales = "free_x", ncol = 3) +
+  labs(x = "Category", y = NULL) + 
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10.5), 
+    legend.position = "none",
+    strip.background = element_rect(fill = "black"),
+    strip.text = element_text(color = "white", face = "bold", size = 13.2) 
+  )
+
+
+final_plot <- (p_upper / p_lower) + 
+  plot_annotation(theme = theme(plot.margin = margin(10, 10, 10, 20)))
+
+final_plot <- wrap_elements(panel = final_plot) +
+  labs(tag = "Wage") +
+  theme(
+    plot.tag.position = c(0.02, 0.5), 
+    plot.tag = element_text(angle = 90, size = 14, face = "bold")
+  )
+
+print(final_plot)
 
 
 
