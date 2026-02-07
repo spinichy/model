@@ -1,4 +1,6 @@
 ## Step.1 Data collection
+
+
 library(ISLR)
 data('Wage')
 wage <- Wage
@@ -17,14 +19,15 @@ summary(wage)
 ##visualization - 1
 library(tidyverse)
 library(patchwork)
+table(wage$year)
 
 
-p1 <- ggplot(wage_2003, aes(x = age, y = wage)) +
+p1 <- ggplot(wage, aes(x = age, y = wage)) +
   geom_point(alpha = 0.3, color = "steelblue") +
   # Adding a smooth line to show the trend
   geom_smooth(formula = y ~ x, method = "loess", color = "red") +
   # Title updated to English as requested
-  labs(title = "Relationship between Age and Wage (2003)",
+  labs(title = "Relationship between Age and Wage",
        subtitle = "Scatter plot with LOESS smoothing line",
        x = "Age", y = "Wage") +
   theme_minimal() +
@@ -39,8 +42,9 @@ print(p1)
 
 
 ##visualization - 2
-wage_2003 <- wage %>% filter(year == "2003")
 
+
+wage_2003 <- wage %>% filter(year == "2003")
 windows()
 wage_row1 <- wage_2003 %>%
   select(jobclass, health, health_ins, wage) %>%
@@ -98,50 +102,325 @@ final_plot <- wrap_elements(panel = final_plot) +
 print(final_plot)
 
 
+##Step3.Train Model
+
+
+#<polynomial regression>
+ggplot(wage, aes(x = age, y = wage)) +
+  geom_point(alpha = 0.1, color = "gray") + 
+  geom_smooth(method = "lm", formula = y ~ poly(x, 1), 
+              aes(color = "Linear", linetype = "Linear"), se = FALSE, size = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), 
+              aes(color = "Quadratic", linetype = "Quadratic"), se = FALSE, size = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), 
+              aes(color = "Cubic", linetype = "Cubic"), se = FALSE, size = 1) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 4), 
+              aes(color = "Quartic", linetype = "Quartic"), se = FALSE, size = 1) +
+  scale_color_manual(name = "Model Type", 
+                     values = c("Linear" = "blue", 
+                                "Quadratic" = "red", 
+                                "Cubic" = "darkgreen", 
+                                "Quartic" = "purple"),
+                     breaks = c("Linear", "Quadratic", "Cubic", "Quartic")) +
+  scale_linetype_manual(name = "Model Type", 
+                        values = c("Linear" = "solid", 
+                                   "Quadratic" = "dashed", 
+                                   "Cubic" = "dotted", 
+                                   "Quartic" = "dotdash"),
+                        breaks = c("Linear", "Quadratic", "Cubic", "Quartic")) +
+  theme_minimal() +
+  labs(title = "Polynomial Regression Comparison (Wage vs Age)",
+       x = "Age",
+       y = "Wage")
+
+
+model_polynomial.2nd <- lm(wage ~ age + I(age^2), data = wage)
+
+
+#spline - bs
+summary(wage[,c("age", "wage")])
+
+library(splines)
+model_spline_bs.3 <- lm(wage ~ bs(x = age, 
+                                knots = c(30, 45, 60), 
+                                degree = 3), 
+                      data = wage)
+
+#spline - bs.quantile
+attr(x = bs(x = wage$age, df = 6), which = "knots")
+model_spline_bs.3_uniform.quantile <- lm(wage ~ bs(x = age, 
+                                                   knots = c(33.75, 42.00, 51.00), 
+                                                   degree = 3), 
+                                         data = wage)
+
+
+
+#spline - ns
+summary(wage$age)
+model_spline_ns <- lm(wage ~ ns(x = age,
+                                df = 4,
+                                knots = c(33.75, 42.00, 51.00), 
+                                Boundary.knots = c(18,80)),
+                      data = wage)
+
+#spline - smooth
+
+model_spline_smooth <- smooth.spline(x = wage$age, y = wage$wage)
+
+
+#local regression
+model_loess_0.2 <- loess(formula = wage ~ age, span = 0.2, data = wage)
+model_loess_0.5 <- loess(formula = wage ~ age, span = 0.5, data = wage)
+            
+
+##Step4.Evaluate Model
+
+
+#<polynomial regression>
+summary(model_polynomial.2nd)
+
+model_polynomial.4th <- lm(wage ~ age + I(age^2) + I(age^3) + I(age^4), data = wage)
+summary(model_polynomial.4th)
+
+anova(model_polynomial.2nd, model_polynomial.4th)
+
+
+#splines
+
+#bs
+summary(model_spline_bs.3)
+summ_spline_bs <- summary(model_spline_bs.3)
+adj.r_squared_bs <- summ_spline_bs$adj.r.squared
+
+#bs-quantile
+summary(model_spline_bs.3_uniform.quantile)
+summ_spline_bs.quantile <- summary(model_spline_bs.3_uniform.quantile)
+adj.r_squared_bs.quantile <- summ_spline_bs.quantile$adj.r.squared
+
+#ns
+summary(model_spline_ns)
+summ_spline_ns <- summary(model_spline_ns)
+adj.r_squared_ns <- summ_spline_ns$adj.r.squared
+
+#smooth
+model_spline_smooth
+SSE_smooth <- sum( (wage$wage - fitted(model_spline_smooth))^2 )
+SST <- sum( (wage$wage - mean(wage$wage))^2 )
+
+edf_smooth <- model_spline_smooth$df
+n <- length(wage$wage)
+adj.r_squared_smooth <- 1 - ( (SSE_smooth / (n - edf_smooth)) / (SST / (n - 1)) )
+
+adj_r_squared_smooth
+
+#Visualize - compare spline model
+library(ggplot2)
+
+model_comparison <- data.frame(
+  Model = factor(c("B-Spline (Fixed)", "B-Spline (Quantile)", "Natural Spline", "Smoothing Spline"),
+                 levels = c("B-Spline (Fixed)", "B-Spline (Quantile)", "Natural Spline", "Smoothing Spline")),
+  Adj_R2 = c(adj.r_squared_bs, 
+             adj.r_squared_bs.quantile, 
+             adj.r_squared_ns, 
+             adj.r_squared_smooth)
+)
+
+windows() 
+ggplot(model_comparison, aes(x = Model, y = Adj_R2, fill = Adj_R2)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  geom_text(aes(label = round(Adj_R2, 5)), 
+            hjust = -0.15, 
+            size = 4.5, 
+            fontface = "bold") +
+  scale_y_continuous(
+    breaks = seq(0.05, 0.10, by = 0.01),
+    expand = c(0, 0) 
+  ) +
+  scale_fill_gradient(low = "#e5f5e0", high = "#006d2c") +
+  labs(
+    title = "Comparison of Spline Models Performance",
+    subtitle = "x-axis: Adjusted R-squared, y-axis: Spline type",
+    x = NULL, 
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_text(size = 11, face = "italic"), 
+    axis.text.x = element_text(size = 10),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(color = "grey30", size = 11),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "grey90"),
+    plot.margin = margin(10, 40, 10, 10) 
+  )
 
 
 
 
+##Step5.Improve Model
 
 
 
+#loess
+summary(model_loess_0.2)
+
+n <- nrow(wage)
+SSE_loess_0.2 <- sum( (wage$wage - fitted(model_loess_0.2))^2 )
+SSE_loess_0.2_df <- model_loess_0.2$enp
+loess_0.2_adj_r2 <- 1 - ( (SSE_loess_0.2  / (n - SSE_loess_0.2_df - 1)) / (SST / (n - 1)) )
+loess_0.2_adj_r2
 
 
+summary(model_loess_0.5)
+SSE_loess_0.5_df <- model_loess_0.5$enp
+loess_0.5_adj_r2 <- 1 - ( (SSE_loess_0.5  / (n - SSE_loess_0.5_df - 1)) / (SST / (n - 1)) )
+loess_0.5_adj_r2
 
 
+library(ggplot2)
+
+spans <- seq(0.1, 0.8, by = 0.1)
+results <- data.frame(Span = numeric(), Adj_R2 = numeric())
+n <- nrow(wage)
+SST <- sum((wage$wage - mean(wage$wage))^2)
+
+for (s in spans) {
+  model <- loess(wage ~ age, span = s, data = wage)
+  SSE <- sum((wage$wage - fitted(model))^2)
+ 
+  df_model <- model$enp
+  adj_r2 <- 1 - (SSE / (n - df_model - 1)) / (SST / (n - 1))
+  
+  results <- rbind(results, data.frame(Span = s, Adj_R2 = adj_r2))
+}
+
+windows() 
+ggplot(results, aes(x = Span, y = Adj_R2)) +
+  geom_line(color = "#006d2c", size = 1.2) +
+  geom_point(color = "#006d2c", size = 3) +
+  geom_text(aes(label = round(Adj_R2, 5), 
+                color = ifelse(Span == 0.1, "red", "black")), 
+            vjust = -1.5, 
+            size = 4.5, 
+            fontface = "bold") +
+  scale_color_identity() +
+  scale_x_continuous(
+    breaks = spans,
+    expand = c(0.02, 0)
+  ) +
+  scale_y_continuous(
+    limits = c(0.08, 0.10), 
+    breaks = seq(0.08, 0.10, by = 0.005),
+    expand = c(0, 0) 
+  ) +
+  labs(
+    title = "LOESS Performance: Span 0.1 to 0.8",
+    subtitle = "Span 0.1 (Smallest Neighbor) is Optimal",
+    x = "Span (Proportion of Neighbors)",
+    y = "Adjusted R-squared"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey95"),
+    plot.margin = margin(35, 15, 10, 10) 
+  )
 
 
+#Generalized Analysis Model(GAM)
 
 
+SSE_smooth #4762596 #Direct Optimization
+library(gam)
+gam(formula = wage ~ s(age, df = model_spline_smooth$df), data = wage) #4759960 #Backfitting(IRLS: Iterative Re-weighted Least Squares)
+
+df_smooth <- model_spline_smooth$df
 
 
+library(gam)
+library(ggplot2)
+library(dplyr)
+df_smooth < -model_spline_smooth$df
+
+gam_age <- gam(formula = wage ~ s(age, df = model_spline_smooth$df), data = wage)
+baseline_sse <- gam_age$deviance
+df_smooth <- model_spline_smooth$df
 
 
+#SSE 
+library(gam)
+library(ggplot2)
+library(dplyr)
+df_smooth <- model_spline_smooth$df
+gam_age <- gam(formula = wage ~ s(age, df = model_spline_smooth$df), data = wage)
+baseline_sse <- gam_age$deviance
+df_smooth <- model_spline_smooth$df
+
+cat_vars <- c("maritl", "race", "education", "jobclass", "health", "health_ins")
+
+sse_results <- data.frame(Variable = character(), SSE = numeric(), stringsAsFactors = FALSE)
+for (var in cat_vars) {
+  form <- as.formula(paste("wage ~ s(age, df =", df_smooth, ") +", var))
+  model <- gam(form, data = wage)
+  sse_results <- rbind(sse_results, data.frame(Variable = var, SSE = model$deviance))
+}
 
 
+sse_results <- sse_results %>% arrange(SSE)
+
+ggplot(sse_results, aes(x = reorder(Variable, SSE), y = SSE, fill = SSE)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_hline(yintercept = baseline_sse, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = 1, y = baseline_sse, label = "Age Only Model", 
+           vjust = -1, color = "red", fontface = "bold") +
+  geom_text(aes(label = format(round(SSE, 0), big.mark = ",")), 
+            vjust = -0.5, size = 3.5, fontface = "bold") +
+  scale_fill_gradient(low = "#004d00", high = "#ccffcc") +
+  coord_cartesian(ylim = c(min(sse_results$SSE) * 0.95, max(baseline_sse) * 1.05)) +
+  labs(title = "SSE Reduction by Adding Categorical Variables",
+       subtitle = "Red dashed line represents the model with 'age' only",
+       x = "Categorical Variables Added to s(age)",
+       y = "Residual Deviance (SSE)") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 0, face = "italic", size = 11),
+    panel.grid.major.x = element_blank()
+  )
 
 
+m1 <- gam(wage ~ s(age, df = df_smooth), data = wage)
+m2 <- gam(wage ~ s(age, df = df_smooth) + education, data = wage)
+m3 <- gam(wage ~ s(age, df = df_smooth) + education + health_ins, data = wage)
+m4 <- gam(wage ~ s(age, df = df_smooth) + education + health_ins + jobclass, data = wage)
+m5 <- gam(wage ~ s(age, df = df_smooth) + education + health_ins + jobclass + health, data = wage)
+m6 <- gam(wage ~ s(age, df = df_smooth) + education + health_ins + jobclass + health + race, data = wage)
+stepwise_anova_final <- anova(m1, m2, m3, m4, m5, m6, test = "F")
+
+print(stepwise_anova_final)
 
 
+#AIC
+aic_values <- data.frame(
+  Model = c("Age", "Age+Edu", "Age+Edu+Ins", "Age+Edu+Ins+Job", "Age+Edu+Ins+Job+Health", "Age+Edu+Ins+Job+Health+Race"),
+  AIC = c(AIC(m1), AIC(m2), AIC(m3), AIC(m4), AIC(m5), AIC(m6))
+)
 
+print(aic_values)
 
+library(ggplot2)
 
-
-
-# 1. Generate synthetic data (Signal with abrupt structural changes)
-set.seed(123)
-# Create a piecewise constant signal with different levels
-x <- c(rep(0, 25), rep(10, 25), rep(5, 25), rep(-5, 25)) 
-# Add Gaussian white noise to the signal
-x <- x + rnorm(100) 
-windows()
-plot(x, main="Original Signal with Noise")
-
-# 2. Perform Discrete Wavelet Transform (DWT)
-# filter = "haar": Use the simplest wavelet filter (Haar)
-# n.levels = 3: Decompose the signal into 3 levels of resolution
-wt_result <- dwt(x, filter = "haar", n.levels = 3)
-
-# 3. Visualize the decomposition results
-# Shows Approximation (V) and Detail (W) coefficients
-plot(wt_result)
+ggplot(aic_values, aes(x = reorder(Model, -AIC), y = AIC, group = 1)) +
+  geom_line(color = "darkgreen", size = 1) +
+  geom_point(aes(color = AIC), size = 4, show.legend = FALSE) +
+  scale_color_gradient(low = "#004d00", high = "#ccffcc") +
+  geom_text(aes(label = round(AIC, 1)), vjust = -1.5, fontface = "bold") +
+  labs(title = "Model Comparison using AIC",
+       subtitle = "Lower AIC indicates a more parsimonious and better-fitting model",
+       x = "Model Complexity (Stepwise)",
+       y = "AIC Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1, face = "italic")) +
+  # 여백 확보
+  coord_cartesian(ylim = c(min(aic_values$AIC) * 0.99, max(aic_values$AIC) * 1.01))
