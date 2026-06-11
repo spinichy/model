@@ -1,1 +1,361 @@
+## Step.1 Data collection
+
+
+#Loading raw data
+
+
+library(earth)
+library(mlbench)
+
+url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/abalone/abalone.data"
+column_names <- c("Sex", "Length", "Diameter", "Height", "WholeWeight", 
+                  "ShuckedWeight", "VisceraWeight", "ShellWeight", "Rings")
+
+Abalone <- read.csv(url, header = FALSE, col.names = column_names)
+
+
+
+## Step.2 Data preparation
+
+
+
+
+str(Abalone)
+
+
+#visualization
+
+library(GGally)
+library(ggplot2)
+
+Abalone$Sex <- factor(Abalone$Sex, levels = c("I", "F", "M"))
+
+ggpairs(Abalone, 
+        columns = 2:9, 
+        aes(color = Sex, alpha = 0.5),
+        title = "Abalone Dataset",
+        upper = list(continuous = wrap("cor", size = 3)),
+        lower = list(continuous = wrap("points", size = 0.5)))  
+
+
+
+#split into train and test data
+
+
+
+Abalone_infant <- Abalone %>% filter(Sex == "I") %>% select(-Sex)
+Abalone_Female <- Abalone %>% filter(Sex == "F") %>% select(-Sex)
+Abalone_Male   <- Abalone %>% filter(Sex == "M") %>% select(-Sex)
+
+split_data <- function(data) {
+  set.seed(20266010)
+  train_index <- createDataPartition(data$Rings, p = 0.7, list = FALSE)
+  list(train = data[train_index, ], test = data[-train_index, ])
+}
+
+data_infant <- split_data(Abalone_infant)
+data_female <- split_data(Abalone_Female)
+data_male   <- split_data(Abalone_Male)
+
+
+
+## Step3. Train model
+
+
+mars_infant <- earth(Rings ~ ., #forwad
+                     data = data_infant$train, 
+                     degree = 2, #degree = 2: Interaction Model, degree = 1: Additive Model
+                     pmethod = "backward")  #Pruning Method: backward
+
+mars_female <- earth(Rings ~ ., 
+                     data = data_female$train, 
+                     degree = 2, 
+                     pmethod = "backward")
+mars_male   <- earth(Rings ~ .,
+                     data = data_male$train, 
+                     degree = 2, 
+                     pmethod = "backward")
+
+
+
+##Step4.Evaluate Model
+
+
+
+predictions_infant <- predict(mars_infant, 
+                              newdata = data_infant$test)
+
+predictions_female <- predict(mars_female, 
+                              newdata = data_female$test)
+predictions_male <- predict(mars_male, 
+                            newdata = data_male$test)
+
+residual_infant <- (data_infant$test$Rings - predictions_infant)
+residual_female <- (data_female$test$Rings - predictions_female)
+residual_male <- (data_male$test$Rings - predictions_male)
+
+rmse_infant <- sqrt(mean(residual_infant^2))
+rmse_female <- sqrt(mean(residual_female^2))
+rmse_male <- sqrt(mean(residual_male^2))
+
+cat("RMSE Infant:", rmse_infant, "\n")
+cat("RMSE Female:", rmse_female, "\n")
+cat("RMSE Male:", rmse_male, "\n")
+
+
+
+residuals_df <- data.frame(
+  Value = c(residual_infant, residual_female, residual_male),
+  Sex = rep(c("Infant", "Female", "Male"), 
+            times = c(length(residual_infant), length(residual_female), length(residual_male)))
+)
+
+#Ensure factor levels are set to the desired order
+residuals_df$Sex <- factor(residuals_df$Sex, levels = c("Infant", "Female", "Male"))
+
+
+library(ggplot2)
+library(dplyr)
+
+# 1alculate stats_data 
+stats_data <- residuals_df %>%
+  group_by(Sex) %>%
+  summarise(
+    rmse_val = sqrt(mean(Value^2)),
+    pct_within = mean(Value >= -sqrt(mean(Value^2)) & Value <= sqrt(mean(Value^2))) * 100
+  )
+
+# Plotting
+ggplot(residuals_df, aes(x = Value)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "white") +
+  
+  # Separate data source for vline and text to ensure variables are found
+  geom_vline(data = stats_data, aes(xintercept = rmse_val), color = "red", linetype = "dashed", linewidth = 1) +
+  geom_vline(data = stats_data, aes(xintercept = -rmse_val), color = "red", linetype = "dashed", linewidth = 1) +
+  
+  # Annotate percentage
+  geom_text(data = stats_data, aes(x = 0, y = Inf, label = paste0(round(pct_within, 1), "%")), 
+            vjust = 2, size = 5, fontface = "bold") +
+  
+  # Annotate RMSE values
+  geom_text(data = stats_data, aes(x = rmse_val, y = 0, label = round(rmse_val, 3)), 
+            color = "red", vjust = -1, hjust = -0.1, size = 5, fontface = "bold") +
+  geom_text(data = stats_data, aes(x = -rmse_val, y = 0, label = round(-rmse_val, 3)), 
+            color = "red", vjust = -1, hjust = 1.1, size = 5, fontface = "bold") +
+  
+  facet_wrap(~Sex, nrow = 1) +
+  labs(title = "Residual Distribution & Coverage within ±RMSE",
+       x = "Residuals (Observed - Predicted)",
+       y = "Density") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 10),
+        strip.text = element_text(size = 13, face = "bold"))
+
+
+table(Abalone$Sex)
+
+
+# Create a combined data frame containing observed and predicted values
+plot_data <- rbind(
+  data.frame(Observed = data_infant$test$Rings, Predicted = as.vector(predictions_infant), Sex = "Infant"),
+  data.frame(Observed = data_female$test$Rings, Predicted = as.vector(predictions_female), Sex = "Female"),
+  data.frame(Observed = data_male$test$Rings, Predicted = as.vector(predictions_male), Sex = "Male")
+)
+
+# Set factor levels for correct ordering
+plot_data$Sex <- factor(plot_data$Sex, levels = c("Infant", "Female", "Male"))
+
+#  Visualization
+ggplot(plot_data, aes(x = Observed, y = Predicted)) +
+  # Add points with transparency
+  geom_point(alpha = 0.5, color = "steelblue") +
+  # Add identity line (y = x) as a reference for perfect prediction
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed", linewidth = 1) +
+  # Facet by gender
+  facet_wrap(~Sex, nrow = 1) +
+  # Labels and styling
+  labs(title = "Actual vs Predicted Values by Gender",
+       subtitle = "Reference line (red dashed) indicates perfect prediction (y=x)",
+       x = "Observed Rings",
+       y = "Predicted Rings") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 13),
+        strip.text = element_text(size = 16, face = "bold"))
+
+
+
+
+## Step5. Improve model
+
+
+library(caret)
+library(caret)
+library(earth)
+
+# Use "cv" method with 10 folds to ensure robust model evaluation
+fitControl <- trainControl(method = "cv", number = 10)
+
+# Define the tuning grid
+tuning_grid <- expand.grid(degree = 1:2, nprune = 5:20)
+
+# Train tuned model for Infant
+mars_tuned_infant <- train(Rings ~ ., 
+                           data = data_infant$train, 
+                           method = "earth", 
+                           trControl = fitControl, 
+                           tuneGrid = tuning_grid)
+
+# Train tuned model for Female
+mars_tuned_female <- train(Rings ~ ., 
+                           data = data_female$train, 
+                           method = "earth", 
+                           trControl = fitControl, 
+                           tuneGrid = tuning_grid)
+
+# Tuning MARS hyperparameters for Male data
+mars_tuned_male <- train(Rings ~ ., 
+                         data = data_male$train, 
+                         method = "earth", 
+                         trControl = fitControl,
+                         tuneGrid = tuning_grid)
+
+# Display best tuning parameters for each model
+print(mars_tuned_infant$bestTune)
+print(mars_tuned_female$bestTune)
+print(mars_tuned_male$bestTune)
+
+# Predict using the best models
+preds_tuned_infant <- predict(mars_tuned_infant, newdata = data_infant$test)
+preds_tuned_female <- predict(mars_tuned_female, newdata = data_female$test)
+preds_tuned_male   <- predict(mars_tuned_male,   newdata = data_male$test)
+
+# Calculate RMSE for tuned models
+rmse_tuned_infant <- sqrt(mean((data_infant$test$Rings - preds_tuned_infant)^2))
+rmse_tuned_female <- sqrt(mean((data_female$test$Rings - preds_tuned_female)^2))
+rmse_tuned_male   <- sqrt(mean((data_male$test$Rings - preds_tuned_male)^2))
+
+# Print final RMSE results
+cat("Tuned RMSE Infant:", rmse_tuned_infant, "\n")
+cat("Tuned RMSE Female:", rmse_tuned_female, "\n")
+cat("Tuned RMSE Male:",   rmse_tuned_male,   "\n")
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# 1. Prepare the data frame
+results_df <- data.frame(
+  Sex = factor(c("Infant", "Female", "Male"), levels = c("Infant", "Female", "Male")),
+  Original = c(rmse_infant, rmse_female, rmse_male),
+  Tuned = c(rmse_tuned_infant, rmse_tuned_female, rmse_tuned_male),
+  Params = c("n:13, d:2", "n:8, d:1", "n:8, d:1")
+)
+
+# 2. Reshape to long format
+results_long <- results_df %>%
+  pivot_longer(cols = c("Original", "Tuned"), 
+               names_to = "Model", 
+               values_to = "RMSE") %>%
+  group_by(Sex) %>%
+  mutate(IsBetter = RMSE == min(RMSE)) %>%
+  ungroup() %>%
+  mutate(DisplayLabel = ifelse(Model == "Tuned", Params, ""))
+
+# 3. Create the visualization
+ggplot(results_long, aes(x = Sex, y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  
+  # "better" label: Placed strictly above the bar with the lower RMSE
+  # vjust is set to a negative value to push the text above the top of the bar
+  geom_text(aes(label = ifelse(IsBetter, "better", "")),
+            position = position_dodge(0.9), vjust = -1.5, size = 4.5, fontface = "bold") +
+  
+  # RMSE value: Placed in the center of the bar
+  geom_text(aes(label = round(RMSE, 3)),
+            position = position_dodge(0.9), vjust = 1.5, color = "white", size = 3.5) +
+  
+  # Hyperparameters: Placed near the bottom of the Tuned bar
+  geom_text(aes(label = DisplayLabel),
+            position = position_dodge(0.9), vjust = 4.0, color = "black", size = 3, fontface = "italic") +
+  
+  labs(title = "RMSE Comparison: Original vs Tuned MARS",
+       subtitle = "text inside Tuned bars shows (nprune, degree)",
+       x = "Gender",
+       y = "RMSE (Lower is Better)") +
+  theme_minimal(base_size = 10) +
+  scale_fill_manual(values = c("Original" = "#56B4E9", "Tuned" = "#D55E00"))
+
+
+
+
+library(car)
+library(ggplot2)
+library(dplyr)
+
+# 1. Calculate VIF
+# Ensure that Abalone[,-1] only contains numeric predictors to avoid errors
+vif_model <- lm(Rings ~ ., data = Abalone[, -1])
+vif_values <- vif(vif_model)
+
+# 2. Create a data frame for ggplot
+vif_df <- data.frame(
+  Variable = names(vif_values),
+  VIF = as.numeric(vif_values)
+)
+
+# 3. Create the visualization
+ggplot(vif_df, aes(x = reorder(Variable, VIF), y = VIF)) +
+  geom_col(fill = "steelblue", alpha = 0.8) +
+  # Add a horizontal line at VIF = 10 (the standard threshold)
+  geom_hline(yintercept = 10, color = "red", linetype = "dashed", size = 1) +
+  # Add labels for clarity
+  coord_flip() +
+  labs(title = "VIF Values for Abalone Variables",
+       subtitle = "Threshold of 10 indicates high multicollinearity",
+       x = "Variables",
+       y = "Variance Inflation Factor (VIF)") +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(face = "bold"))
+
+#
+
+
+
+# Update: Train models excluding 'WholeWeight'
+# Use the formula interface to subtract the specific variable from the feature set
+
+# 1. Train models for each gender excluding WholeWeight
+mars_infant_adj <- earth(Rings ~ . - WholeWeight, 
+                         data = data_infant$train, 
+                         degree = 2, 
+                         pmethod = "backward")
+
+mars_female_adj <- earth(Rings ~ . - WholeWeight, 
+                         data = data_female$train, 
+                         degree = 2, 
+                         pmethod = "backward")
+
+mars_male_adj   <- earth(Rings ~ . - WholeWeight, 
+                         data = data_male$train, 
+                         degree = 2, 
+                         pmethod = "backward")
+
+# 2. Evaluate Model performance
+preds_infant_adj <- predict(mars_infant_adj, newdata = data_infant$test)
+preds_female_adj <- predict(mars_female_adj, newdata = data_female$test)
+preds_male_adj   <- predict(mars_male_adj,   newdata = data_male$test)
+
+# 3. Calculate RMSE for the adjusted models
+rmse_infant_adj <- sqrt(mean((data_infant$test$Rings - preds_infant_adj)^2))
+rmse_female_adj <- sqrt(mean((data_female$test$Rings - preds_female_adj)^2))
+rmse_male_adj   <- sqrt(mean((data_male$test$Rings - preds_male_adj)^2))
+
+# 4. Print results
+cat("Adjusted RMSE Infant:", rmse_infant_adj, "\n")
+cat("Adjusted RMSE Female:", rmse_female_adj, "\n")
+cat("Adjusted RMSE Male:",   rmse_male_adj,   "\n")
 
