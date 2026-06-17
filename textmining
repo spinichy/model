@@ -1,0 +1,192 @@
+###part 1 - basic
+
+
+
+##1. Data Preparation
+
+
+
+# 1. Load required libraries
+library(rvest)
+library(dplyr)
+library(stringr)
+library(tidyverse)
+
+# 2. Define the URL
+# Note: Use the actual URL of the ABC News article
+url <- "https://abcnews.com/Politics/obama-doubtful-iran-deal-past/story?id=133874150"
+
+# 3. Scrape the content
+# Read the HTML page
+webpage <- read_html(url)
+
+# Extract the title (usually in <h1> tag)
+title <- webpage %>% 
+  html_node("h1") %>% 
+  html_text(trim = TRUE)
+
+# Most ABC News articles use 'p' tags with the class 'EkqkG' for the body text.
+# If this fails, the page content might be dynamically loaded (requires RSelenium).
+body_paragraphs <- webpage %>% 
+  html_elements("p.EkqkG") %>% 
+  html_text(trim = TRUE)
+
+# 4. Clean the text
+# Filter out non-article elements such as promotional links or 'Related' tags.
+clean_text <- body_paragraphs[!str_detect(body_paragraphs, "Tune into|Related")]
+
+# 5. Collapse all paragraphs into a single character string
+article_text <- paste(clean_text, collapse = "\n\n")
+
+text <- c(title, article_text)
+
+
+
+##2. Corpus Creation and EDA
+
+
+
+library(tm)
+library(tidyverse)
+
+getSources()
+
+
+# Convert the text vector into a source object and then into a Volatile Corpus
+corpus.docs <- VectorSource(x = text) %>%  
+  VCorpus()
+
+# Check the class of the corpus object
+class(corpus.docs)
+
+# Inspect the metadata and content of the first document (as a list)
+inspect(corpus.docs[1])
+
+# Inspect the content of the first document (as an object)
+inspect(corpus.docs[[1]])
+
+# Convert all documents in the corpus to character strings using lapply
+lapply(X = corpus.docs, FUN = as.character)
+
+# Access the content of the first document directly
+corpus.docs[[1]]$content
+
+# Access the metadata of the first document
+corpus.docs[[1]]$meta
+
+# Assign a local 'author' metadata tag to the first document
+meta(x = corpus.docs[[1]], tag = "author", type = "local") <- "ABC" 
+
+# Delete the local 'author' metadata tag from the first document
+meta(x = corpus.docs[[1]], tag = "author", type = "local") <- NULL 
+
+# Filter the corpus for documents containing "Obama" or "doubtful" and display their content
+tm_filter(x = corpus.docs, 
+          FUN = function(x) any(grep(pattern = "Obama|doubtful", x = content(x)))
+) %>% 
+  lapply(X = ., FUN = content)
+
+# Write each document in the corpus to individual text files
+writeCorpus(x = corpus.docs)
+
+
+
+##3. Data Preprocessing
+
+
+
+getTransformations()
+
+
+#Convert all English letters to lowercase
+corpus.docs <- tm_map(x = corpus.docs, FUN = content_transformer(FUN = tolower))
+
+#Remove stop words
+corpus.docs <- tm_map(x = corpus.docs, FUN = removeWords, 
+                      stopwords("english"))
+
+# Replace hyphens and slashes with a space to prevent words from merging
+corpus.docs <- tm_map(corpus.docs, content_transformer(function(x) {
+  x <- gsub("-", " ", x)
+  x <- gsub("/", " ", x)
+  return(x)
+}))
+
+#Remove punctuation
+corpus.docs <- tm_map(x = corpus.docs, FUN = removePunctuation)
+corpus.docs <- tm_map(x = corpus.docs, 
+                      FUN = content_transformer(function(x) gsub("’", "", x)))
+
+#Remove number
+corpus.docs <- tm_map(x = corpus.docs, FUN = removeNumbers)
+
+#Remove whitespace
+corpus.docs <- tm_map(x = corpus.docs, FUN = content_transformer(trimws))
+
+#Stemming
+library(textstem)
+corpus.docs <- tm_map(x = corpus.docs, FUN = content_transformer(lemmatize_strings))
+
+lapply(corpus.docs, content)
+
+
+#additional 
+
+my_stopwords <- c("say", "think", "tell", "will", "can", "now", "just", "make", "get", "year")
+corpus.docs <- tm_map(corpus.docs, removeWords, my_stopwords)
+
+corpus.docs <- tm_map(corpus.docs, content_transformer(function(x) {
+  # Replace curly quotes, en-dash/em-dash, and standard apostrophes with a space
+  return(gsub("[“”–’]", " ", x))
+}))
+
+corpus.docs <- tm_map(corpus.docs, content_transformer(function(x) {
+  x <- gsub("irans", "iran", x)       # Normalize possessive
+  x <- gsub("\\bco\\b", "", x)        # Remove standalone 'co'
+  x <- gsub("\\bfeb\\b", "", x)       # Remove 'feb'
+  return(x)
+}))
+
+my_stopwords <- c(my_stopwords, "co", "feb", "irans")
+corpus.docs <- tm_map(corpus.docs, removeWords, my_stopwords)
+
+corpus.docs <- tm_map(corpus.docs, stripWhitespace)
+
+lapply(corpus.docs, content)
+
+
+
+##4. Tidy-text Conversion
+
+
+
+library(tidytext)
+
+text_df <- tidy(corpus.docs)
+text_df$text
+tidy_words <- text_df %>%
+  unnest_tokens(output = word, input = text)
+
+inspect(corpus.docs)[[1]]$meta
+tidy_words
+
+
+
+##5. Document-Term Matrix Construction
+
+
+
+corpus.dtm <- DocumentTermMatrix(x = corpus.docs, 
+                                 control = list(wordLengths = c(2,Inf)))
+corpus.dtm
+inspect(corpus.dtm)
+
+nTerms(corpus.dtm);Terms(corpus.dtm)
+nDocs(corpus.dtm);Docs(corpus.dtm)
+
+rownames(corpus.dtm) <- c("title", "content")
+Docs(corpus.dtm)
+
+
+
+###part 2 - Frequency Analysis
