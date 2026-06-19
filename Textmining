@@ -189,4 +189,921 @@ Docs(corpus.dtm)
 
 
 
-###part 2 - Frequency Analysis
+
+
+## Part 2 - Frequency Analysis
+
+
+
+
+#-------------------------------------------------------------------------------
+
+#Preparing materials for the presidential speech
+
+#-------------------------------------------------------------------------------
+
+
+# Load necessary libraries
+library(httr)
+library(jsonlite)
+
+# Define API configuration
+api_key <- "d5d066fd160812dba90915381296057a57f1dc5cea1cce3897130b5df95c4232"
+
+#--------------------------------------------------------------------------------
+# Updated base URL with the new UDDI ID provided in the image
+base_url <- "https://api.odcloud.kr/api/15084167/v1/uddi:f30c6ace-297a-4a9e-9229-844153ed21ba"
+
+# 1. Fetch total count to ensure all 8,565 records are covered
+# If content() function causes issues, use rawToChar to parse the response directly
+res_check <- GET(base_url, query = list(page = 1, perPage = 1, serviceKey = api_key))
+
+json_text <- rawToChar(res_check$content)
+total_count <- fromJSON(json_text)$totalCount
+
+# 2. Loop to fetch all pages
+all_data_list <- list()
+page_size <- 100 
+total_pages <- ceiling(total_count / page_size)
+
+for (i in 1:total_pages) {
+  res <- GET(base_url, query = list(page = i, perPage = page_size, serviceKey = api_key))
+  
+  if (status_code(res) == 200) {
+
+    page_content <- rawToChar(res$content)
+    all_data_list[[i]] <- fromJSON(page_content)$data
+  } else {
+    message(paste("Failed to fetch page:", i))
+  }
+}
+
+# 3. Combine into a single data frame
+final_data <- do.call(rbind, all_data_list)
+
+head(final_data)
+final_data[grepl("취임", final_data$글제목), ]
+
+
+inaugural_docs <- final_data[grepl("대통령 취임사|대통령 취임식", final_data$글제목), ]
+inaugural_docs <- inaugural_docs[-c(3,4,9),] 
+
+inaugural <- inaugural_docs
+
+
+
+library(pdftools)
+library(tesseract)
+# 1. Initialize an empty list
+inaugural_texts <- list()
+
+# 2. Loop through the data to extract text
+for (i in 1:nrow(inaugural)) {
+  # Use 구분번호 as the key (ID)
+  id <- as.character(inaugural$구분번호[i])
+  url <- inaugural$원문보기[i]
+  title <- inaugural$글제목[i]
+  
+  message(paste0("Processing [", i, "/", nrow(inaugural), "]: ", title))
+  
+  # Extract text using tryCatch
+  content_text <- tryCatch({
+    text_vec <- pdf_text(url)
+    paste(text_vec, collapse = " ")
+  }, error = function(e) {
+    message(paste("Failed to process:", title))
+  })
+  
+  # Save into the list with ID as the key
+  inaugural_texts[[id]] <- list(
+    title = title,
+    content = content_text
+  )
+}
+
+
+
+# 3. Verify the result structure
+
+# 1. Identify IDs where content is empty or only whitespace
+empty_indices <- sapply(inaugural_texts, function(x) {
+  # Trim whitespace and check if character length is less than 10
+  nchar(trimws(x$content)) < 10
+})
+
+# 2. Get the list of IDs and Titles that failed to load
+failed_list <- inaugural_texts[empty_indices]
+
+# 3. Print the results
+cat("The following speeches failed to extract content:\n")
+for (id in names(failed_list)) {
+  cat(sprintf("ID: %s | Title: %s\n", id, failed_list[[id]]$title))
+}
+
+
+
+
+inaugural[c(7,8,9,15),]
+library(readxl)
+
+file_path <- "speech_7_8_9_15.xlsx"
+
+sheet_names <- excel_sheets(file_path)
+
+sheet_list <- lapply(sheet_names, function(sheet) {
+  read_excel(file_path, sheet = sheet, col_names = FALSE)
+})
+
+names(sheet_list) <- sheet_names
+
+combined_texts <- lapply(sheet_list, function(df) {
+  # Remove NA values and collapse the column into one string
+  # Assuming the text data is in the first column of each tibble
+  text_vector <- na.omit(df[[1]])
+  paste(text_vector, collapse = " ")
+})
+str(combined_texts)
+
+
+
+# 1. Load necessary libraries
+library(dplyr)
+library(stringr)
+library(KoNLP)
+
+# 2. Define the preprocessing function
+# The comments inside the function are written in English as requested.
+preprocess_text <- function(input_text) {
+  # Return an empty string if input is null, NA, or empty
+  if (is.null(input_text) || is.na(input_text) || nchar(trimws(input_text)) == 0) {
+    return("")
+  }
+  
+  # 1. Remove page number patterns (e.g., "- 1 -") and condense initial whitespace
+  text <- str_replace_all(input_text, "-\\s?\\d+\\s?-", " ") 
+  text <- str_squish(text) # Initial cleanup of redundant spaces
+  
+  # 2. Remove special characters and symbols, keeping only Korean, English, numbers, and spaces
+  text <- str_replace_all(text, "[^가-힣a-zA-Z0-9\\s]", " ")
+  
+  # 3. Convert to lowercase and remove all numeric digits
+  text <- str_to_lower(text)
+  text <- str_remove_all(text, "[0-9]")
+  
+  # 4. Extract Nouns (Korean morphology analysis)
+  words <- extractNoun(text)
+  
+  # 5. Remove stop words and single-character words
+  stop_words_custom <- c("대한", "대통령", "우리", "오늘", "이번", "저", "것", 
+                         "취임", "취임사", "취임식", "민국", "여러", "본인", 
+                         "니다", "이것", "그것", "있읍니다", "년대", "것입니다",
+                         "하겠읍니다", "이", "수", "등", "안", "대통령의", "제대", "문재",
+                         "부의장", "것이요", "그동안", "해야겠읍니다", "겠읍니다", "읍니다", 
+                         "대다수", "왔읍니다", "일어났읍니다", "가운데", "없읍니다", "대통력",
+                         "부의장", "것이요", "그동안", "해야겠읍니다", "겠읍니다", 
+                         "읍니다", "대다수", "왔읍니다", "일어났읍니다", "가운데", 
+                         "없읍니다", "대통력",  "대통령이승만박사담화집", "다바치",
+                         "다먹고", "대다수", "되었읍니다", "국민여러분","무정견")
+  words <- words[!words %in% stop_words_custom]
+  
+  # Filter out words with length 1 or less
+  words <- words[nchar(words) > 1] 
+  
+  # 6. Final cleanup: Join into a string and ensure no double spaces remain
+  # str_squish handles multiple spaces, tabs, and newlines effectively
+  cleaned_text <- paste(words, collapse = " ")
+  return(str_squish(cleaned_text))
+}
+
+# 3. Apply the function with progress tracking and time measurement
+start_time <- Sys.time()
+message("Preprocessing started at: ", start_time)
+
+# Calculate total items
+total_items <- length(inaugural_texts)
+
+# Process each item and show progress for every single one
+processed_data_list <- lapply(seq_along(inaugural_texts), function(i) {
+  # Get current item
+  x <- inaugural_texts[[i]]
+  
+  # Process content
+  clean_content <- preprocess_text(x$content)
+  
+  # Display progress for every item
+  message("Processed [", i, "/", total_items, "] - Title: ", x$title, " (", Sys.time(), ")")
+  
+  # Return as a data frame row
+  return(data.frame(
+    title = x$title,
+    clean_text = clean_content,
+    stringsAsFactors = FALSE
+  ))
+})
+
+end_time <- Sys.time()
+message("Preprocessing finished at: ", end_time)
+message("Total time taken: ", round(difftime(end_time, start_time, units = "secs"), 2), " seconds.")
+
+
+
+
+# 4. Bind into a single data frame
+df_final <- do.call(rbind, processed_data_list)
+rownames(df_final) <- NULL
+
+
+#combine
+combined_texts_cleaned <- lapply(combined_texts, preprocess_text)
+
+df_final$clean_text[7]  <- combined_texts_cleaned$`7`
+df_final$clean_text[8]  <- combined_texts_cleaned$`8`
+df_final$clean_text[9]  <- combined_texts_cleaned$`9`
+df_final$clean_text[15] <- combined_texts_cleaned$`15`
+
+inaugural <- inaugural %>% 
+  mutate(Index = c(1:19))
+df_final  <- df_final %>% 
+  mutate(Index = c(1:19))
+
+inaugural <- inaugural %>% 
+  left_join(x = ., y = df_final, by = "Index")
+
+
+
+
+#-------------------------------------------------------------------------------
+
+#text mining
+
+#-------------------------------------------------------------------------------
+
+
+combined_data <- inaugural %>%
+  select(대통령, 글제목) %>%
+  rename(title = 글제목) %>%
+  left_join(df_final, by = "title")
+
+
+combined_data$clean_text == ""
+combined_data$clean_text[7]
+combined_data[15,]$clean_text
+
+library(tidytext)
+tidy_speeches <- combined_data %>%
+  unnest_tokens(word, clean_text)
+
+
+speech_dtm <- tidy_speeches %>%
+  count(대통령, word) %>%
+  cast_dtm(대통령, word, n)
+
+
+
+
+termfreq <- colSums(as.matrix(speech_dtm))
+length(termfreq)
+head(sort(x = termfreq, decreasing = TRUE))
+library(tm)
+findFreqTerms(x = speech_dtm, lowfreq = 50)
+
+
+# 1. Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(scales) 
+
+# 2. Prepare the data frame from termfreq
+word_df <- data.frame(
+  word = names(termfreq),
+  freq = as.numeric(termfreq)
+)
+
+# 3. Sort by frequency and select the top 30 words
+top30_df <- word_df %>%
+  arrange(desc(freq)) %>%
+  slice(1:30)
+
+# 4. Visualization: Create a horizontal bar chart
+ggplot(top30_df, aes(x = reorder(word, freq), y = freq)) +
+  # Use yellowgreen for the bar color
+  geom_col(fill = "yellowgreen") +
+  # Add frequency labels at the end of each bar
+  geom_text(aes(label = freq), hjust = -0.2, size = 3.5) + 
+  # Flip coordinates to make it a horizontal bar chart
+  coord_flip() +
+  # Set x-axis range to 330, breaks to every 30, and start exactly at 0
+  scale_y_continuous(
+    limits = c(0, 420),
+    breaks = seq(0, 420, by = 30),
+    expand = expansion(mult = c(0, 0.01)) # '0' at the start removes padding
+  ) +
+  # Set y-axis text to italic and apply minimal theme
+  theme_minimal() +
+  theme(
+    axis.text.y = element_text(face = "italic", size = 10) 
+  ) +
+  # Add labels and title
+  labs(
+    title = "Inaugural Address of the President of the Republic of Korea: Top 30 Word Frequencies",
+    x = "Words",
+    y = "Frequency"
+  )
+
+
+
+
+
+# 1. Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(tidytext) 
+
+# 2. Prepare the data
+top10_speeches <- tidy_speeches %>%
+  filter(대통령 %in% c("이승만", "윤보선", "박정희", "최규하", "전두환", "노태우")) %>%
+  group_by(대통령) %>%
+  count(word, sort = TRUE) %>%
+  slice_max(n = 10, order_by = n, with_ties = FALSE) %>%
+  ungroup()
+
+# 3. Define the chronological order using factors
+order_levels <- c("이승만", "윤보선", "박정희", "최규하", "전두환", "노태우")
+top10_speeches$대통령 <- factor(top10_speeches$대통령, levels = order_levels)
+
+# Add official labels
+top10_speeches <- top10_speeches %>%
+  mutate(president_label = factor(case_when(
+    대통령 == "이승만" ~ "1st~3rd (이승만)",
+    대통령 == "윤보선" ~ "4th (윤보선)",
+    대통령 == "박정희" ~ "6th~9th (박정희)",
+    대통령 == "최규하" ~ "10th (최규하)",
+    대통령 == "전두환" ~ "11th & 12th (전두환)",
+    대통령 == "노태우" ~ "13th (노태우)"
+  ), levels = c("1st~3rd (이승만)", "4th (윤보선)", 
+                "6th~9th (박정희)", "10th (최규하)", 
+                "11th & 12th (전두환)", "13th (노태우)")))
+
+# 4. Visualization: 2 rows x 3 columns grid with frequency labels
+ggplot(top10_speeches, aes(x = reorder_within(word, n, president_label), y = n)) +
+  geom_col(fill = "yellowgreen") +
+  # Add frequency labels at the end of each bar
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  coord_flip() +
+  scale_x_reordered() +
+  # Set 2 rows and 3 columns layout
+  facet_wrap(~ president_label, nrow = 2, ncol = 3, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Words by President (~Civilian Government)",
+    x = "Words",
+    y = "Frequency"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(face = "italic")
+  )
+
+
+
+
+
+# 1. Filter data for Presidents from Kim Young-sam to Moon Jae-in
+# Note: Ensure the '대통령' column names match your data exactly.
+target_presidents <- c("김영삼", "김대중", "노무현", "이명박", "박근혜", "문재인")
+
+top10_speeches_recent <- tidy_speeches %>%
+  filter(대통령 %in% target_presidents) %>%
+  group_by(대통령) %>%
+  count(word, sort = TRUE) %>%
+  slice_max(n = 10, order_by = n, with_ties = FALSE) %>%
+  ungroup()
+
+# 2. Define the chronological order for these presidents
+order_levels_recent <- c("김영삼", "김대중", "노무현", "이명박", "박근혜", "문재인")
+top10_speeches_recent$대통령 <- factor(top10_speeches_recent$대통령, levels = order_levels_recent)
+
+# 3. Add official labels for the plots
+top10_speeches_recent <- top10_speeches_recent %>%
+  mutate(president_label = factor(case_when(
+    대통령 == "김영삼" ~ "14th (김영삼)",
+    대통령 == "김대중" ~ "15th (김대중)",
+    대통령 == "노무현" ~ "16th (노무현)",
+    대통령 == "이명박" ~ "17th (이명박)",
+    대통령 == "박근혜" ~ "18th (박근혜)",
+    대통령 == "문재인" ~ "19th (문재인)"
+  ), levels = c("14th (김영삼)", "15th (김대중)", "16th (노무현)", 
+                "17th (이명박)", "18th (박근혜)", "19th (문재인)")))
+
+# 4. Visualization: 2 rows x 3 columns grid for the recent presidents
+ggplot(top10_speeches_recent, aes(x = reorder_within(word, n, president_label), y = n)) +
+  geom_col(fill = "steelblue") + # Changed color to steelblue for differentiation
+  geom_text(aes(label = n), hjust = -0.2, size = 3) +
+  coord_flip() +
+  scale_x_reordered() +
+  facet_wrap(~ president_label, nrow = 2, ncol = 3, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Words by President (Kim Young-sam to Moon Jae-in)",
+    x = "Words",
+    y = "Frequency"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(face = "italic")
+  )
+
+
+
+#tf-idf
+
+inaugural$대통령 <- factor(inaugural$대통령, levels = unique(inaugural$대통령))
+inaugural$글제목 <- factor(inaugural$글제목, levels = unique(inaugural$글제목))
+inaugural <- inaugural %>%
+  rename(
+    doc_id = title,
+    text = clean_text
+  )
+
+inaugural$doc_id <- paste0("doc_", 1:nrow(inaugural))
+corpus <- VCorpus(DataframeSource(inaugural))
+speech_dtm.2 <- DocumentTermMatrix(x = corpus, 
+                                   control = list(weighting = weightTfIdf))
+inspect(speech_dtm.2)
+
+inaugural$unique_id <- paste(inaugural$대통령, inaugural$연설연도, sep = "_")
+rownames(speech_dtm.2) <- inaugural$unique_id
+inspect(speech_dtm.2)
+
+speech_dtm_tf_idf <- tidy(speech_dtm.2) %>% 
+  mutate(tf_idf = count, count = NULL)
+
+speech_dtm_tf_idf
+
+
+# 1. Separate the document name to extract the President's name
+# Assuming your document format is 'Name_Year' (e.g., '이승만_1948')
+speech_dtm_tf_idf_president <- speech_dtm_tf_idf %>%
+  mutate(president = str_remove(document, "_[0-9]+$")) # Remove the year suffix
+
+# 2. Sum the tf-idf values by President and Term
+# Grouping by president and term to aggregate importance
+president_tf_idf <- speech_dtm_tf_idf_president %>%
+  group_by(president, term) %>%
+  summarise(sum_tf_idf = sum(tf_idf), .groups = 'drop')
+
+# 3. Extract the top 10 terms for each president based on the aggregated tf-idf
+top_10_terms_per_president <- president_tf_idf %>%
+  group_by(president) %>%
+  slice_max(order_by = sum_tf_idf, n = 10, with_ties = FALSE) %>%
+  arrange(president, desc(sum_tf_idf))
+
+top_10_terms_per_president
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidytext)
+
+# 1. Filter data up to President Roh Tae-woo and add labels
+top10_plots_limited <- top_10_terms_per_president %>%
+  filter(president %in% c("이승만", "윤보선", "박정희", "최규하", "전두환", "노태우")) %>%
+  mutate(president_label = factor(case_when(
+    president == "이승만" ~ "1st~3rd (이승만)",
+    president == "윤보선" ~ "4th (윤보선)",
+    president == "박정희" ~ "6th~9th (박정희)",
+    president == "최규하" ~ "10th (최규하)",
+    president == "전두환" ~ "11th & 12th (전두환)",
+    president == "노태우" ~ "13th (노태우)"
+  ), levels = c("1st~3rd (이승만)", "4th (윤보선)", "6th~9th (박정희)", 
+                "10th (최규하)", "11th & 12th (전두환)", "13th (노태우)")))
+
+# 2. Visualization: 2 rows x 3 columns grid
+ggplot(top10_plots_limited, aes(x = reorder_within(term, sum_tf_idf, president_label), y = sum_tf_idf)) +
+  geom_col(fill = "yellowgreen") +
+  # Add tf-idf labels at the end of each bar
+  geom_text(aes(label = round(sum_tf_idf, 2)), hjust = +1, size = 3) +
+  coord_flip() +
+  scale_x_reordered() +
+  # Set layout to 2 rows and 3 columns
+  facet_wrap(~ president_label, nrow = 2, ncol = 3, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Terms by President (Up to Roh Tae-woo)",
+    x = "Terms",
+    y = "tf_idf"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(face = "italic"),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+
+
+# 1. Data filtering and labeling for Kim Young-sam to Moon Jae-in
+# Filter the data for presidents from 14th to 19th
+top10_plots_limited <- top_10_terms_per_president %>%
+  filter(president %in% c("김영삼", "김대중", "노무현", "이명박", "박근혜", "문재인")) %>%
+  mutate(president_label = factor(case_when(
+    president == "김영삼" ~ "14th (김영삼)",
+    president == "김대중" ~ "15th (김대중)",
+    president == "노무현" ~ "16th (노무현)",
+    president == "이명박" ~ "17th (이명박)",
+    president == "박근혜" ~ "18th (박근혜)",
+    president == "문재인" ~ "19th (문재인)"
+  ), levels = c("14th (김영삼)", "15th (김대중)", "16th (노무현)", 
+                "17th (이명박)", "18th (박근혜)", "19th (문재인)")))
+
+# 2. Visualization: 2 rows x 3 columns grid
+ggplot(top10_plots_limited, aes(x = reorder_within(term, sum_tf_idf, president_label), y = sum_tf_idf)) +
+  geom_col(fill = "steelblue") + # Changed color for visual distinction
+  # Add tf-idf labels at the end of each bar
+  geom_text(aes(label = round(sum_tf_idf, 2)), hjust = 1.1, size = 3, color = "white") +
+  coord_flip() +
+  scale_x_reordered() +
+  # Set layout to 2 rows and 3 columns
+  facet_wrap(~ president_label, nrow = 2, ncol = 3, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Top 10 Terms by President (Kim Young-sam to Moon Jae-in)",
+    x = "Terms",
+    y = "Sum of TF-IDF"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 10),
+    axis.text.y = element_text(face = "italic"),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+
+
+
+## Part 3 - sentiment analysis
+
+
+
+#------------------------------------------------------------------------------
+#preparation data (Preprocessing)
+#------------------------------------------------------------------------------
+
+
+library(jsonlite)
+
+# 1. Configuration
+my_api_key <- "AIzaSyCASo1w8izAsgkcx842TRYz17XYegjCApI"
+video_id <- "W36ywkxQTTI"
+# Store data in a data frame to hold multiple columns
+all_comments_data <- data.frame()
+
+# 2. Function to fetch all replies for a specific top-level comment thread
+get_all_replies <- function(parent_id) {
+  replies_df <- data.frame()
+  next_page_token <- NULL
+  
+  repeat {
+    page_param <- ifelse(is.null(next_page_token), "", paste0("&pageToken=", next_page_token))
+    # Fetch snippet part to get publishedAt and likeCount
+    url <- paste0("https://www.googleapis.com/youtube/v3/comments?",
+                  "key=", my_api_key,
+                  "&part=snippet",
+                  "&parentId=", parent_id,
+                  "&maxResults=100",
+                  page_param)
+    
+    data <- fromJSON(url)
+    if (!is.null(data$items)) {
+      # Extract text, published date, and like count
+      snippet <- data$items$snippet
+      temp_df <- data.frame(
+        text = snippet$textDisplay,
+        published_at = snippet$publishedAt,
+        like_count = snippet$likeCount,
+        stringsAsFactors = FALSE
+      )
+      replies_df <- rbind(replies_df, temp_df)
+    }
+    
+    next_page_token <- data$nextPageToken
+    if (is.null(next_page_token)) break
+  }
+  return(replies_df)
+}
+
+# 3. Main loop: Retrieve top-level threads and their full reply chains
+next_page_token <- NULL
+repeat {
+  page_param <- ifelse(is.null(next_page_token), "", paste0("&pageToken=", next_page_token))
+  
+  url_threads <- paste0("https://www.googleapis.com/youtube/v3/commentThreads?",
+                        "key=", my_api_key,
+                        "&videoId=", video_id,
+                        "&part=snippet",
+                        "&maxResults=100",
+                        "&order=time",
+                        "&textFormat=plainText",
+                        page_param)
+  
+  data_threads <- fromJSON(url_threads)
+  
+  if (!is.null(data_threads$items)) {
+    # Extract top-level comment info
+    top_snippet <- data_threads$items$snippet$topLevelComment$snippet
+    top_df <- data.frame(
+      text = top_snippet$textDisplay,
+      published_at = top_snippet$publishedAt,
+      like_count = top_snippet$likeCount,
+      stringsAsFactors = FALSE
+    )
+    all_comments_data <- rbind(all_comments_data, top_df)
+    
+    # Check if there are replies to fetch
+    total_replies <- data_threads$items$snippet$totalReplyCount
+    parent_ids <- data_threads$items$id
+    
+    for (i in 1:length(total_replies)) {
+      # Only call the function if there are replies
+      if (total_replies[i] > 0) {
+        all_comments_data <- rbind(all_comments_data, get_all_replies(parent_ids[i]))
+      }
+    }
+  }
+  
+  next_page_token <- data_threads$nextPageToken
+  if (is.null(next_page_token)) break
+}
+
+# 4. Finalize and display results
+cat("Total comments collected:", nrow(all_comments_data), "\n")
+str(all_comments_data)
+
+write.xlsx(x = all_comments_data, file = "all_comments_data.xlsx")
+
+
+
+#------------------------------------------------------------------------------
+# Preprocessing - KoNLP
+#------------------------------------------------------------------------------
+
+
+# Preprocess function for Korean soccer comments
+preprocess_korean <- function(df) {
+  
+  # Ensure the input is a data frame
+  if(!is.data.frame(df)) {
+    df <- data.frame(text = df, stringsAsFactors = FALSE)
+  }
+  
+  # Convert to lowercase
+  clean_text <- str_to_lower(df$text)
+  
+  # Remove special characters
+  clean_text <- str_replace_all(clean_text, "[^[:alnum:][:space:]가-힣]", "")
+  
+  # Remove numbers
+  clean_text <- str_replace_all(clean_text, "[0-9]+", "")
+  
+  # Remove extra whitespaces
+  clean_text <- str_squish(clean_text)
+  
+  # Define specific 1-character words that carry strong sentiment in soccer
+  # You can expand this list based on your specific dataset
+  sentiment_1char <- c("와", "헐", "윽", "굿", "짱", "판", "골", "슛")
+  
+  # Lemmatization and filtering
+  processed_list <- sapply(clean_text, function(x) {
+    if(is.na(x) || x == "") return("")
+    
+    # Morphological analysis
+    morphs <- SimplePos09(x)
+    
+    # Extract nouns, verbs, adjectives, and adverbs
+    words <- unlist(str_extract_all(morphs, "[가-힣]+/(N|VV|VA|MAG)"))
+    words <- str_replace(words, "/(N|VV|VA|MAG)", "")
+    
+    # Filter: Keep if 2+ characters OR if it's in the special sentiment list
+    words <- words[nchar(words) >= 2 | words %in% sentiment_1char]
+    
+    # Filter: Remove common stop words
+    custom_stopwords <- c("정말", "진짜", "너무", "하다", "그것", "저것", "이거", "저거")
+    words <- words[!(words %in% custom_stopwords)]
+    
+    return(paste(words, collapse = " "))
+  })
+  
+  df$processed_text <- processed_list
+  return(df)
+}
+
+all_comments_data_processed <- preprocess_korean(df = all_comments_data)
+all_comments_data_processed
+
+all_words <- all_comments_data_processed %>%
+  unnest_tokens(output = word, input = processed_text)
+
+
+#------------------------------------------------------------------------------
+# wordcloud
+#------------------------------------------------------------------------------
+
+
+# 1. Load required libraries
+library(wordcloud)
+library(RColorBrewer)
+library(dplyr)
+
+# 2. Calculate word frequency (essential step for word cloud)
+word_freq <- all_words %>%
+  count(word, sort = TRUE)
+
+# 3. Generate the word cloud
+# Set seed for reproducible layout
+set.seed(1234)
+
+wordcloud(words = word_freq$word, 
+          freq = word_freq$n, 
+          min.freq = 2,          # Only include words appearing at least 5 times
+          max.words = 200,       # Display only the top 100 words
+          random.order = FALSE,  # Place frequent words in the center
+          colors = brewer.pal(8, "Dark2")) # Apply color theme
+
+
+library(openxlsx)
+all_comments_data <- read.xlsx(xlsxFile = "all_comments_data.xlsx")
+
+str(all_comments_data)
+
+
+#------------------------------------------------------------------------------
+# [Python] sentiment analysi, model: nlptown/bert-base-multilingual-uncased-sentiment from Python
+#------------------------------------------------------------------------------
+
+
+# %%
+import subprocess
+import sys
+
+# 1. Force install libraries specifically to the current Python interpreter
+def ensure_packages():
+  packages = ['pandas', 'openpyxl', 'sentence-transformers', 'matplotlib']
+for package in packages:
+  print(f"Checking {package}...")
+subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# Install before importing
+ensure_packages()
+
+# 2. Imports
+import pandas as pd
+import matplotlib.pyplot as plt
+from sentence_transformers import SentenceTransformer
+from transformers import pipeline
+
+# 3. Load Data
+file_path = 'all_comments_data.xlsx'
+all_comments_data = pd.read_excel(file_path)
+
+# 4. Initialize Models
+# Load embedding model
+embed_model = SentenceTransformer('jhgan/ko-sroberta-multitask')
+# Load sentiment analysis pipeline
+sentiment_analyzer = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
+
+# 5. Perform Embedding
+print("Generating embeddings...")
+all_comments_data['embeddings'] = list(embed_model.encode(all_comments_data['text'].tolist()))
+
+# 6. Perform Sentiment Analysis (Full dataset)
+print("Analyzing sentiment for all comments...")
+all_comments_data['sentiment_result'] = all_comments_data['text'].apply(
+  lambda x: sentiment_analyzer(str(x)[:512])[0]
+)
+all_comments_data['stars'] = all_comments_data['sentiment_result'].apply(
+  lambda x: int(x['label'].split()[0])
+)
+
+print("Analysis complete!")
+
+# 7. Visualization
+plt.rcParams['font.family'] = 'Malgun Gothic' 
+stars_counts = all_comments_data['stars'].value_counts().sort_index()
+
+plt.figure(figsize=(8, 8))
+plt.pie(
+  stars_counts, 
+  labels=[f"{s} stars" for s in stars_counts.index], 
+  autopct='%1.1f%%', 
+  startangle=140, 
+  colors=['#ff9999','#ffcc99','#ffff99','#99ff99','#66b3ff']
+)
+plt.title('Sentiment Distribution (Star Ratings)')
+plt.show()
+
+# 8. Save
+all_comments_data.to_excel('all_comments_final_analyzed.xlsx', index=False)
+print("Results saved to 'all_comments_final_analyzed.xlsx'")
+
+
+# %%
+
+
+#------------------------------------------------------------------------------
+# sentiment analysi in R
+#------------------------------------------------------------------------------
+
+
+all_comments_final_analyzed <- read.xlsx(xlsxFile = "all_comments_final_analyzed.xlsx", 
+                                         colNames = TRUE)
+                                          
+str(all_comments_final_analyzed)
+
+
+
+# 1. Prepare data for the donut chart
+donut_data <- all_comments_final_analyzed %>%
+  group_by(stars) %>%
+  summarise(count = n()) %>%
+  mutate(fraction = count / sum(count),
+         ymax = cumsum(fraction),
+         ymin = c(0, head(ymax, n = -1)),
+         labelPosition = (ymax + ymin) / 2,
+         label = paste0(stars, " stars (", round(fraction * 100, 1), "%)"))
+
+# 2. Define custom 5-color palette
+custom_palette <- c("#FF0000", "#FF8000", "#FFFF00", "#B2FF66", "#90EE90")
+names(custom_palette) <- as.character(1:5)
+
+# 3. Create the donut chart
+ggplot(donut_data, aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 3, fill = as.factor(stars))) +
+  geom_rect() +
+  coord_polar(theta = "y") +
+  xlim(c(2, 4)) +
+  scale_fill_manual(values = custom_palette) +
+  theme_void() +
+  theme(
+    legend.position = "none",
+    # vjust moves the title down (negative values move it down), 
+    # plot.margin adds extra space at the top so the title doesn't hit the edge
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14, vjust = -2),
+    plot.margin = margin(t = 30, r = 0, b = 0, l = 0)
+  ) +
+  labs(title = "Preliminary Round 1: South Korea vs Czech Republic in World Cup") +
+  geom_text(aes(x = 3.5, y = labelPosition, label = label), size = 3.5)
+
+
+str(all_comments_final_analyzed)
+
+
+
+
+# 1. Group by stars and pick the top 5 comments with the most likes
+top_comments_by_star <- all_comments_final_analyzed %>%
+  group_by(stars) %>%
+  slice_max(order_by = like_count, n = 5, with_ties = FALSE) %>%
+  select(stars, like_count, text) %>%
+  arrange(stars, desc(like_count))
+
+top_comments_by_star
+
+
+
+
+# %%
+library(gt)
+library(dplyr)
+
+# 1. Compact table styling with specific column widths
+top_comments_table <- top_comments_by_star %>%
+  group_by(stars) %>%
+  gt() %>%
+  tab_header(
+    title = "Top 5 Liked Comments by Sentiment",
+    subtitle = "Preliminary Round 1: South Korea vs Czech Republic"
+  ) %>%
+  # Adjust column widths in pixels
+  cols_width(
+    stars ~ px(60),      # Column 1: Narrow
+    like_count ~ px(80), # Column 2: Narrow
+    text ~ px(600)       # Column 3: Wide
+  ) %>%
+  tab_options(
+    table.width = px(800),
+    data_row.padding = px(3),
+    table.font.size = px(13),
+    heading.padding = px(5)
+  )
+
+# 2. Display the table
+top_comments_table
+
+# Install necessary packages for exporting if not present
+if (!require("webshot2")) install.packages("webshot2")
+if (!require("gtExtras")) install.packages("gtExtras")
+
+# Save the table as a PDF file
+top_comments_table %>%
+  gtsave(filename = "top_comments_table.pdf")
+
+
