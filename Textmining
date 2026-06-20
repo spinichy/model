@@ -1071,3 +1071,146 @@ top_comments_table %>%
   gtsave(filename = "top_comments_table.pdf")
 
 
+
+
+
+# Load required libraries
+library(rvest)
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(tm)
+library(topicmodels)
+library(textstem)
+
+# 1. Function to scrape article content
+scrape_abc_article <- function(article_url) {
+  page <- read_html(article_url)
+  title <- page %>% html_node("h1") %>% html_text(trim = TRUE)
+  paragraphs <- page %>% html_elements("p.EkqkG") %>% html_text(trim = TRUE)
+  full_text <- paste(paragraphs, collapse = "\n\n")
+  return(data.frame(url = article_url, title = title, content = full_text, stringsAsFactors = FALSE))
+}
+
+# 2. Scrape and prepare corpus
+urls <- c(
+  "https://abcnews.com/US/doj-refuses-issue-signed-declaration-verifying-anti-weaponization/story?id=134040412",
+  "https://abcnews.com/Health/wireStory/africa-cdc-chief-continent-invest-funds-ebola-response-134043400",
+  "https://abcnews.com/US/wireStory/us-gas-prices-dip-below-4-time-march-133994593",
+  "https://abcnews.com/US/78-world-cup-matches-counter-drone-technology-white/story?id=133927808"
+)
+
+news_list <- lapply(urls, function(u) {
+  tryCatch(scrape_abc_article(u), error = function(e) return(NULL))
+})
+news_df <- bind_rows(news_list)
+
+news_df$class <- c("Politics", "International","Business", "Technology")
+
+# 3. Comprehensive Preprocessing Pipeline
+# Create a corpus from the content
+corpus <- Corpus(VectorSource(news_df$content))
+
+
+# Define transformation functions for the pipeline
+# 1. Remove special characters/symbols (replace with space)
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+corpus <- tm_map(corpus, toSpace, "[^[:alnum:]]") 
+
+# 2. Expand contractions (simplified example)
+corpus <- tm_map(corpus, toSpace, "n't") # Basic example for "don't" -> "do"
+
+# 3. Convert to lowercase
+corpus <- tm_map(corpus, content_transformer(tolower))
+
+# 4. Remove numbers
+corpus <- tm_map(corpus, removeNumbers)
+
+# 5. Remove stopwords (Default + Custom)
+custom_stopwords <- c("abc", "news", "story", "said") # User-defined stopwords
+corpus <- tm_map(corpus, removeWords, c(stopwords("en"), custom_stopwords))
+
+# 6. Lemmatization (using textstem package or similar logic)
+# Note: R's 'tm' usually handles stemming. For true Lemmatization, install 'textstem'
+# install.packages("textstem")
+corpus <- tm_map(corpus, content_transformer(textstem::lemmatize_strings))
+
+# 7. Remove extra whitespace
+corpus <- tm_map(corpus, stripWhitespace)
+
+# 4. Create DTM
+dtm <- DocumentTermMatrix(corpus)
+
+# 5. LDA Topic Modeling
+# Remove empty rows if any
+row_totals <- apply(dtm, 1, sum)
+dtm <- dtm[row_totals > 0, ]
+rownames(dtm) <- news_df$class 
+inspect(dtm)
+
+# Run LDA
+k <- 4
+lda_model <- LDA(dtm, k = k, control = list(seed = 1234, 
+                                            burnin = 1000,
+                                            iter = 1000,
+                                            thin = 100), method = "Gibbs")
+
+
+topics(lda_model)[1:4]
+
+
+# 6. Display results
+topics_beta <- tidy(lda_model, matrix = "beta")
+top_terms <- topics_beta %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  arrange(topic, -beta)
+
+print(top_terms)
+
+
+library(ggplot2)
+library(dplyr)
+
+# Visualize Top Terms by Topic
+# Using facet_wrap to create a 2x2 layout
+ggplot(top_terms, aes(x = reorder_within(term, beta, topic), y = beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free", ncol = 2) +
+  scale_x_reordered() +
+  coord_flip() +
+  labs(title = "Top 10 Terms per Topic",
+       x = "Term",
+       y = "Beta (Probability of Term in Topic)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+# Extract Gamma (Document-Topic Distribution)
+topics_gamma <- tidy(lda_model, matrix = "gamma")
+
+# View the results
+topics_gamma
+
+
+
+
+library(ggplot2)
+library(dplyr)
+
+# Visualize Gamma distribution per topic using a 2x2 wrap
+ggplot(topics_gamma, aes(x = reorder(document, gamma), y = gamma, fill = document)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, ncol = 2) +
+  coord_flip() +
+  labs(title = "Document Association by Topic",
+       x = "Document Category",
+       y = "Gamma (Probability)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.y = element_text(size = 8))
+
+#
+
+#
