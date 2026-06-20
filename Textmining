@@ -203,43 +203,7 @@ Docs(corpus.dtm)
 #-------------------------------------------------------------------------------
 
 
-# Load necessary libraries
-library(httr)
-library(jsonlite)
-
-# Define API configuration
-api_key <- "d5d066fd160812dba90915381296057a57f1dc5cea1cce3897130b5df95c4232"
-
-#--------------------------------------------------------------------------------
-# Updated base URL with the new UDDI ID provided in the image
-base_url <- "https://api.odcloud.kr/api/15084167/v1/uddi:f30c6ace-297a-4a9e-9229-844153ed21ba"
-
-# 1. Fetch total count to ensure all 8,565 records are covered
-# If content() function causes issues, use rawToChar to parse the response directly
-res_check <- GET(base_url, query = list(page = 1, perPage = 1, serviceKey = api_key))
-
-json_text <- rawToChar(res_check$content)
-total_count <- fromJSON(json_text)$totalCount
-
-# 2. Loop to fetch all pages
-all_data_list <- list()
-page_size <- 100 
-total_pages <- ceiling(total_count / page_size)
-
-for (i in 1:total_pages) {
-  res <- GET(base_url, query = list(page = i, perPage = page_size, serviceKey = api_key))
-  
-  if (status_code(res) == 200) {
-
-    page_content <- rawToChar(res$content)
-    all_data_list[[i]] <- fromJSON(page_content)$data
-  } else {
-    message(paste("Failed to fetch page:", i))
-  }
-}
-
-# 3. Combine into a single data frame
-final_data <- do.call(rbind, all_data_list)
+##Youtube API
 
 head(final_data)
 final_data[grepl("취임", final_data$글제목), ]
